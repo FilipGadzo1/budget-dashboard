@@ -16,7 +16,10 @@ export const buildProjectionRows = (
   locale: string,
 ): ProjectionRow[] => {
   const startDate = monthKeyToDate(startMonth)
-  const net = inputs.monthlyIncome - inputs.monthlyExpenses
+  const expenses = inputs.expenseItems?.length
+    ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
+    : inputs.monthlyExpenses
+  const net = inputs.monthlyIncome - expenses
   let runningBalance = 0
 
   return Array.from({ length: inputs.months }, (_, index) => {
@@ -27,7 +30,7 @@ export const buildProjectionRows = (
       monthKey: toMonthKey(currentDate),
       monthLabel: formatDisplayMonth(toMonthKey(currentDate), locale),
       income: inputs.monthlyIncome,
-      expenses: inputs.monthlyExpenses,
+      expenses,
       net,
       cumulativeBalance: runningBalance,
     }
@@ -81,8 +84,12 @@ export const buildProjectionTrendPath = (
     .join(' ')
 }
 
-export const calculateBreakEvenGap = (inputs: ProjectionInputs): number =>
-  Math.max(inputs.monthlyExpenses - inputs.monthlyIncome, 0)
+export const calculateBreakEvenGap = (inputs: ProjectionInputs): number => {
+  const expenses = inputs.expenseItems?.length
+    ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
+    : inputs.monthlyExpenses
+  return Math.max(expenses - inputs.monthlyIncome, 0)
+}
 
 export const buildProjectionMilestones = (rows: ProjectionRow[]) => {
   const firstNegativeRow = rows.find((row) => row.cumulativeBalance < 0) ?? null

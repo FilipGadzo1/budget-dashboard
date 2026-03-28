@@ -7,10 +7,11 @@ import InputNumber from 'primevue/inputnumber'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
+import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
-import type { ProjectionInputs } from '@/models'
+import type { ExpenseItem } from '@/models'
 import {
   buildProjectionRows,
   buildProjectionShareSummary,
@@ -47,9 +48,39 @@ const projectionStore = useProjectionStore()
 const uiStore = useUiStore()
 const { currencyCode, formatCurrency, locale } = useCurrency()
 
-const form = reactive<ProjectionInputs>({ ...projectionStore.inputs })
+const form = reactive({
+  monthlyIncome: projectionStore.inputs.monthlyIncome,
+  monthlyExpenses: projectionStore.inputs.monthlyExpenses,
+  months: projectionStore.inputs.months,
+})
 const formErrors = reactive<Record<string, string>>({})
 const showTable = ref(false)
+
+const expenseItems = computed(() => projectionStore.inputs.expenseItems)
+const hasExpenseItems = computed(() => expenseItems.value.length > 0)
+const totalExpenses = computed(() => expenseItems.value.reduce((s, i) => s + i.amount, 0))
+
+const displayedExpenses = computed({
+  get: () => (hasExpenseItems.value ? totalExpenses.value : form.monthlyExpenses),
+  set: (val: number) => { form.monthlyExpenses = val },
+})
+
+const showExpensesDialog = ref(false)
+const expensesDialogMode = ref<'view' | 'edit'>('view')
+
+const openExpensesView = (): void => {
+  expensesDialogMode.value = 'view'
+  showExpensesDialog.value = true
+}
+
+const openExpensesEdit = (): void => {
+  expensesDialogMode.value = 'edit'
+  showExpensesDialog.value = true
+}
+
+const onExpenseItemsUpdate = (items: ExpenseItem[]): void => {
+  projectionStore.setExpenseItems(items)
+}
 
 const shareState = reactive({
   message: '',
@@ -62,6 +93,11 @@ const selectedCurrencyCode = computed({
     const prev = uiStore.currencyCode
     form.monthlyIncome = convert(form.monthlyIncome, prev, nextCurrencyCode)
     form.monthlyExpenses = convert(form.monthlyExpenses, prev, nextCurrencyCode)
+    const convertedItems = projectionStore.inputs.expenseItems.map((item) => ({
+      ...item,
+      amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
+    }))
+    projectionStore.setExpenseItems(convertedItems)
     uiStore.setPreferences({ currencyCode: nextCurrencyCode, locale: uiStore.locale })
   },
 })
@@ -84,7 +120,7 @@ const syncProjection = async (): Promise<void> => {
   clearErrors()
   try {
     const validated = await projectionSchema.validate(form, { abortEarly: false, stripUnknown: true })
-    projectionStore.setInputs(validated)
+    projectionStore.setInputs({ ...validated, expenseItems: projectionStore.inputs.expenseItems })
   } catch (error) {
     Object.assign(formErrors, buildErrorMap(error))
   }
@@ -181,7 +217,20 @@ const downloadShareSummary = (): void => {
 
     <!-- Inputs -->
     <div class="card mb-6">
-      <p class="text-label mb-4">Monthly inputs</p>
+      <div class="mb-4 flex items-center justify-between">
+        <p class="text-label">Monthly inputs</p>
+        <div class="flex gap-2">
+          <button v-if="hasExpenseItems" class="btn btn-secondary btn-sm" @click="openExpensesView">
+            <i class="pi pi-list text-xs" /> View items
+          </button>
+          <button v-if="hasExpenseItems" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
+            <i class="pi pi-pencil text-xs" /> Edit items
+          </button>
+          <button v-else class="btn btn-secondary btn-sm" @click="openExpensesEdit">
+            <i class="pi pi-plus text-xs" /> Add expense items
+          </button>
+        </div>
+      </div>
       <form class="grid gap-4 sm:grid-cols-3" @submit.prevent>
         <div>
           <label class="form-label" for="monthly-income">Monthly income</label>
@@ -199,19 +248,30 @@ const downloadShareSummary = (): void => {
           <p v-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
         </div>
         <div>
-          <label class="form-label" for="monthly-expenses">Monthly expenses</label>
+          <label class="form-label flex items-center gap-1" for="monthly-expenses">
+            Monthly expenses
+            <i
+              class="pi pi-info-circle cursor-default"
+              style="font-size: 0.625rem; color: var(--app-accent);"
+              v-tooltip.top="{ value: 'Enter a fixed monthly amount, or click &quot;Add expense items&quot; above to break it down into named line items. When items are active their sum overrides this field.', showDelay: 300 }"
+            />
+          </label>
           <InputNumber
             id="monthly-expenses"
-            v-model="form.monthlyExpenses"
+            v-model="displayedExpenses"
             mode="currency"
             :currency="currencyCode"
             :locale="locale"
             :min="0"
             :use-grouping="true"
+            :disabled="hasExpenseItems"
             :class="{ 'app-input-invalid': formErrors.monthlyExpenses }"
             fluid
           />
-          <p v-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
+          <p v-if="hasExpenseItems" class="mt-1 text-xs text-secondary">
+            Calculated from {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
+          </p>
+          <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
         </div>
         <div>
           <label class="form-label" for="months">Months to project</label>
@@ -255,6 +315,16 @@ const downloadShareSummary = (): void => {
       <pre class="share-preview mt-4">{{ shareSummary }}</pre>
       <ProjectionTable v-if="showTable" :rows="projectionRows" :format-currency="formatCurrency" />
     </div>
+
+    <!-- Expenses dialog -->
+    <ExpensesDialog
+      v-model:visible="showExpensesDialog"
+      :initial-mode="expensesDialogMode"
+      :model-value="expenseItems"
+      :currency="currencyCode"
+      :locale="locale"
+      @update:model-value="onExpenseItemsUpdate"
+    />
 
     <!-- Exchange rates dialog -->
     <Dialog

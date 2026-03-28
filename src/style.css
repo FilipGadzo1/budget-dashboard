@@ -689,6 +689,14 @@ button, input, select, textarea {
   border-color: var(--app-accent) !important;
 }
 
+.p-inputnumber.p-disabled .p-inputnumber-input,
+.p-inputtext:disabled,
+.p-textarea:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  background: var(--app-bg) !important;
+}
+
 .p-button {
   border-radius: 8px !important;
   font-weight: 600 !important;
