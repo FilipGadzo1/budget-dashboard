@@ -117,6 +117,8 @@ const closeSidebar = (): void => {
 
   <!-- Main content -->
   <main class="main-content">
-    <RouterView />
+    <slot>
+      <RouterView />
+    </slot>
   </main>
 </template>

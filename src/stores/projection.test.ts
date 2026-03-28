@@ -3,37 +3,21 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { STORAGE_KEYS } from '@/lib/storageKeys'
+import { mockProjectionInputs } from '@/data/mockData'
 
 import { useProjectionStore } from './projection'
 
 describe('projection store', () => {
   beforeEach(() => {
-    window.localStorage.clear()
     setActivePinia(createPinia())
   })
 
-  it('preserves older stored projection inputs by normalizing them into the new state shape', () => {
-    window.localStorage.setItem(
-      STORAGE_KEYS.projection,
-      JSON.stringify({
-        version: 1,
-        data: {
-          monthlyIncome: 5100,
-          monthlyExpenses: 3200,
-          months: 9,
-        },
-      }),
-    )
-
+  it('initializes with default inputs and empty scenarios', () => {
     const projectionStore = useProjectionStore()
 
-    expect(projectionStore.inputs).toEqual({
-      monthlyIncome: 5100,
-      monthlyExpenses: 3200,
-      months: 9,
-    })
+    expect(projectionStore.inputs).toEqual(mockProjectionInputs)
     expect(projectionStore.savedScenarios).toEqual([])
+    expect(projectionStore.activeScenarioId).toBeNull()
   })
 
   it('saves, loads, and deletes named scenarios', () => {
