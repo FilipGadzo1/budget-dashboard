@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+*.pem
+package-lock.json
+yarn.lock
+
+# Build & Dist
+dist/
+build/
+.vite/
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.codex
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.DS_Store
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Ralph Specum
+specs/.current-spec
+**/.progress.md
+
+# Claude Code
+.claude/
+/specs
