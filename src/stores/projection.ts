@@ -55,6 +55,12 @@ const defaultSnapshot = (): ProjectionStateSnapshot => ({
   activeScenarioId: null,
 })
 
+const defaultSnapshot = (): ProjectionStateSnapshot => ({
+  inputs: { ...mockProjectionInputs },
+  savedScenarios: [],
+  activeScenarioId: null,
+})
+
 export const useProjectionStore = defineStore('projection', () => {
   const snapshot = ref<ProjectionStateSnapshot>(defaultSnapshot())
   const isReady = ref(false)
