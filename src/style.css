@@ -517,6 +517,9 @@ button, input, select, textarea {
 .text-accent { color: var(--app-accent); }
 .text-secondary { color: var(--app-text-secondary); }
 .text-primary { color: var(--app-text); }
+.divider { height: 1px; background: var(--app-border); }
+.border-app { border-color: var(--app-border); }
+.bg-surface { background: var(--app-surface); }
 
 /* ── Status pill ──────────────────────────────────────────────────── */
 

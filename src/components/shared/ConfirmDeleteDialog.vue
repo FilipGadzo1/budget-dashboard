@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Dialog from 'primevue/dialog'
+import DialogHeader from './DialogHeader.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -21,11 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const close = (): void => emit('update:visible', false)
-
-const confirm = (): void => {
-  emit('confirm')
-  close()
-}
+const confirm = (): void => { emit('confirm'); close() }
 </script>
 
 <template>
@@ -38,10 +35,7 @@ const confirm = (): void => {
     @update:visible="emit('update:visible', $event)"
   >
     <template #header>
-      <div>
-        <p class="text-label">Confirm action</p>
-        <h3 class="mt-1 text-lg font-semibold" style="color: var(--app-text)">{{ title }}</h3>
-      </div>
+      <DialogHeader label="Confirm action" :title="title" />
     </template>
 
     <p class="text-sm leading-6 text-secondary">{{ message }}</p>

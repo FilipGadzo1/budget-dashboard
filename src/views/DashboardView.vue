@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
+import TrendChart from '@/components/dashboard/TrendChart.vue'
+import MilestonesCard from '@/components/dashboard/MilestonesCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import {
   buildProjectionMilestones,
@@ -94,44 +96,15 @@ const insights = computed(() => {
 
     <!-- Trend + Insights -->
     <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-      <!-- Trend chart -->
-      <div class="card">
-        <p class="text-label mb-1">Balance trend</p>
-        <p class="text-heading">Cumulative balance over time</p>
-        <p class="text-body mt-1 mb-4">How your projected balance evolves across the selected horizon.</p>
-        <div class="trend-chart-wrap">
-          <svg viewBox="0 0 400 140" class="w-full" role="img" aria-label="Balance trend line">
-            <defs>
-              <linearGradient id="trend-g" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="var(--app-accent)" />
-                <stop offset="100%" stop-color="var(--app-accent)" stop-opacity="0.5" />
-              </linearGradient>
-              <linearGradient id="trend-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="var(--app-accent)" stop-opacity="0.15" />
-                <stop offset="100%" stop-color="var(--app-accent)" stop-opacity="0" />
-              </linearGradient>
-            </defs>
-            <path v-if="trendFillPath" :d="trendFillPath" fill="url(#trend-fill)" />
-            <path v-if="trendPath" :d="trendPath" fill="none" stroke="url(#trend-g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </div>
-        <div class="mt-4 grid grid-cols-3 gap-4">
-          <div>
-            <p class="text-label">Start</p>
-            <p class="mt-1 text-sm font-semibold tabular-nums" style="color: var(--app-text)">{{ projectionRows[0]?.monthLabel ?? 'N/A' }}</p>
-          </div>
-          <div>
-            <p class="text-label">Peak balance</p>
-            <p class="mt-1 text-sm font-semibold tabular-nums text-positive">{{ formatCurrency(milestones.highestBalance) }}</p>
-          </div>
-          <div>
-            <p class="text-label">Ending</p>
-            <p class="mt-1 text-sm font-semibold tabular-nums" :class="summary.endingBalance >= 0 ? 'text-positive' : 'text-negative'">{{ formatCurrency(summary.endingBalance) }}</p>
-          </div>
-        </div>
-      </div>
+      <TrendChart
+        :trend-path="trendPath"
+        :trend-fill-path="trendFillPath"
+        :rows="projectionRows"
+        :peak-balance="milestones.highestBalance"
+        :ending-balance="summary.endingBalance"
+        :format-currency="formatCurrency"
+      />
 
-      <!-- Insights -->
       <div class="flex flex-col gap-4">
         <article
           v-for="insight in insights"
@@ -139,46 +112,22 @@ const insights = computed(() => {
           class="insight-card"
           :class="insight.tone === 'warning' ? 'insight-warning' : 'insight-positive'"
         >
-          <p class="text-sm font-semibold" style="color: var(--app-text)">{{ insight.title }}</p>
+          <p class="text-sm font-semibold text-primary">{{ insight.title }}</p>
           <p class="text-body mt-1">{{ insight.body }}</p>
         </article>
 
-        <!-- Milestones -->
-        <div class="card">
-          <p class="text-label mb-3">Milestones</p>
-          <div class="flex flex-col gap-3">
-            <div class="flex justify-between items-center">
-              <span class="text-body">First negative month</span>
-              <span class="text-sm font-semibold tabular-nums" style="color: var(--app-text)">
-                {{ milestones.firstNegativeMonthLabel ?? 'Never' }}
-              </span>
-            </div>
-            <div style="height: 1px; background: var(--app-border);" />
-            <div class="flex justify-between items-center">
-              <span class="text-body">Peak balance month</span>
-              <span class="text-sm font-semibold tabular-nums" style="color: var(--app-text)">
-                {{ milestones.highestBalanceMonthLabel ?? 'N/A' }}
-              </span>
-            </div>
-            <div style="height: 1px; background: var(--app-border);" />
-            <div class="flex justify-between items-center">
-              <span class="text-body">Saved scenarios</span>
-              <span class="text-sm font-semibold tabular-nums" style="color: var(--app-text)">
-                {{ projectionStore.savedScenarios.length }}
-              </span>
-            </div>
-          </div>
-        </div>
+        <MilestonesCard
+          :first-negative-month-label="milestones.firstNegativeMonthLabel"
+          :highest-balance-month-label="milestones.highestBalanceMonthLabel"
+          :saved-scenarios-count="projectionStore.savedScenarios.length"
+        />
 
-        <!-- Quick actions -->
         <div class="flex gap-3">
           <button class="btn btn-primary flex-1" @click="router.push('/projections')">
-            <i class="pi pi-calculator text-sm" />
-            Edit plan
+            <i class="pi pi-calculator text-sm" /> Edit plan
           </button>
           <button class="btn btn-secondary flex-1" @click="router.push('/scenarios')">
-            <i class="pi pi-bookmark text-sm" />
-            Scenarios
+            <i class="pi pi-bookmark text-sm" /> Scenarios
           </button>
         </div>
       </div>

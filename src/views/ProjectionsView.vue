@@ -4,6 +4,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 
+import DialogHeader from '@/components/shared/DialogHeader.vue'
+import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
+import StatusMessage from '@/components/shared/StatusMessage.vue'
+import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
 import type { ProjectionInputs } from '@/models'
@@ -31,9 +35,7 @@ const localeOptions = [
   { value: 'hr-HR', label: 'Croatian (Croatia)' },
 ]
 
-const { convert, getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } =
-  useExchangeRates()
-
+const { convert, getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
 const supportedCurrencyCodes = currencyOptions.map((o) => o.value)
 
 const showExchangeDialog = ref(false)
@@ -66,14 +68,12 @@ const selectedCurrencyCode = computed({
 
 const selectedLocale = computed({
   get: () => uiStore.locale,
-  set: (nextLocale: string) => {
-    uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: nextLocale })
-  },
+  set: (val: string) => uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: val }),
 })
 
 const selectedMonth = computed({
   get: () => uiStore.selectedMonth,
-  set: (nextMonth: string) => uiStore.setSelectedMonth(nextMonth),
+  set: (val: string) => uiStore.setSelectedMonth(val),
 })
 
 const clearErrors = (): void => {
@@ -238,7 +238,7 @@ const downloadShareSummary = (): void => {
           <p class="text-label mb-1">Portable summary</p>
           <p class="text-body">Copy or download a plain-text snapshot of the current projection.</p>
         </div>
-        <div class="flex gap-2 flex-shrink-0">
+        <div class="flex flex-shrink-0 gap-2">
           <button class="btn btn-primary btn-sm" @click="copyShareSummary">
             <i class="pi pi-copy text-xs" /> Copy
           </button>
@@ -251,39 +251,9 @@ const downloadShareSummary = (): void => {
         </div>
       </div>
 
-      <p
-        v-if="shareState.message"
-        class="mt-3 text-sm"
-        :class="shareState.tone === 'success' ? 'text-positive' : shareState.tone === 'error' ? 'text-negative' : 'text-secondary'"
-      >
-        {{ shareState.message }}
-      </p>
-
+      <StatusMessage :message="shareState.message" :tone="shareState.tone" class="mt-3" />
       <pre class="share-preview mt-4">{{ shareSummary }}</pre>
-
-      <!-- Monthly table -->
-      <div v-if="showTable" class="mt-6 overflow-x-auto rounded-lg border" style="border-color: var(--app-border);">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th>Income</th>
-              <th>Expenses</th>
-              <th>Net</th>
-              <th>Cumulative Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in projectionRows" :key="row.monthKey">
-              <td class="font-medium">{{ row.monthLabel }}</td>
-              <td class="tabular-nums">{{ formatCurrency(row.income) }}</td>
-              <td class="tabular-nums">{{ formatCurrency(row.expenses) }}</td>
-              <td class="tabular-nums" :class="row.net >= 0 ? 'text-positive' : 'text-negative'">{{ formatCurrency(row.net) }}</td>
-              <td class="tabular-nums" :class="row.cumulativeBalance >= 0 ? '' : 'text-negative'">{{ formatCurrency(row.cumulativeBalance) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <ProjectionTable v-if="showTable" :rows="projectionRows" :format-currency="formatCurrency" />
     </div>
 
     <!-- Exchange rates dialog -->
@@ -295,29 +265,17 @@ const downloadShareSummary = (): void => {
       :style="{ width: 'min(92vw, 22rem)' }"
     >
       <template #header>
-        <div>
-          <p class="text-label">Live rates</p>
-          <h3 class="mt-1 text-lg font-semibold" style="color: var(--app-text)">Exchange rates</h3>
-        </div>
+        <DialogHeader label="Live rates" title="Exchange rates" />
       </template>
-      <div v-if="ratesLoading" class="flex items-center gap-2 text-sm text-secondary py-2">
-        <i class="pi pi-spin pi-spinner" /> Loading rates…
-      </div>
-      <div v-else-if="ratesError" class="flex items-center gap-2 text-sm text-secondary py-2">
-        <i class="pi pi-exclamation-triangle" /> {{ ratesError }}
-      </div>
-      <template v-else>
-        <p class="mb-4 text-sm text-secondary">1 {{ currencyCode }} ≈</p>
-        <div class="flex flex-col gap-3">
-          <div v-for="rate in currentRates" :key="rate.code" class="flex items-center justify-between">
-            <span class="text-sm text-secondary">{{ currencyLabel(rate.code) }} ({{ rate.code }})</span>
-            <span class="text-sm font-semibold tabular-nums" style="color: var(--app-text)">{{ rate.rate }}</span>
-          </div>
-        </div>
-        <p v-if="rateDate" class="mt-4 text-xs text-secondary">
-          Rates as of {{ rateDate }}. Source: European Central Bank.
-        </p>
-      </template>
+      <ExchangeRatesPanel
+        :currency-code="currencyCode"
+        :rates="currentRates"
+        :rate-date="rateDate"
+        :loading="ratesLoading"
+        :error="ratesError"
+        :currency-label="currencyLabel"
+        layout="list"
+      />
     </Dialog>
   </div>
 </template>
