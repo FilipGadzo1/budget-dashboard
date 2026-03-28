@@ -4,25 +4,22 @@ import { useAuth } from '@/composables/useAuth'
 const { signInWithGoogle } = useAuth()
 
 const features = [
-  { icon: 'pi pi-calculator', title: 'Budget Projections', desc: 'Model income and expenses over time to see where your finances are heading.' },
-  { icon: 'pi pi-bookmark', title: 'Save Scenarios', desc: 'Compare different budget plans side by side and pick the one that works.' },
-  { icon: 'pi pi-arrows-h', title: 'Live Exchange Rates', desc: 'Convert between currencies using real-time European Central Bank data.' },
-  { icon: 'pi pi-sync', title: 'Sync Across Devices', desc: 'Your data is stored securely in the cloud so you can access it anywhere.' },
+  { icon: 'pi pi-calculator', title: 'Budget Projections', desc: 'Model income and expenses over time.' },
+  { icon: 'pi pi-bookmark', title: 'Save Scenarios', desc: 'Compare different budget plans side by side.' },
+  { icon: 'pi pi-arrows-h', title: 'Live Exchange Rates', desc: 'Real-time European Central Bank data.' },
+  { icon: 'pi pi-sync', title: 'Cloud Sync', desc: 'Access your data securely from any device.' },
 ]
 </script>
 
 <template>
   <div class="login-page">
-    <!-- Hero section -->
+    <!-- Left: Branding & features -->
     <div class="login-hero">
       <div class="login-hero-inner">
-        <div class="login-logo">
-          <div class="login-logo-icon">B</div>
-        </div>
+        <div class="login-logo-icon">B</div>
         <h1 class="login-heading">Budget Dashboard</h1>
-        <p class="login-tagline">Take control of your finances with smart projections, scenario planning, and real-time currency tracking.</p>
+        <p class="login-tagline">Smart projections, scenario planning, and real-time currency tracking.</p>
 
-        <!-- Feature grid -->
         <div class="login-features">
           <div v-for="f in features" :key="f.title" class="login-feature">
             <div class="login-feature-icon">
@@ -37,11 +34,11 @@ const features = [
       </div>
     </div>
 
-    <!-- Sign-in card -->
+    <!-- Right: Sign-in -->
     <div class="login-card-wrapper">
       <div class="login-card">
         <h2 class="login-card-title">Get started</h2>
-        <p class="login-card-subtitle">Sign in with your Google account to start planning your budget.</p>
+        <p class="login-card-subtitle">Sign in with your Google account to start planning.</p>
 
         <button class="login-google-btn" @click="signInWithGoogle">
           <svg viewBox="0 0 24 24" width="20" height="20">
@@ -53,7 +50,7 @@ const features = [
           Continue with Google
         </button>
 
-        <p class="login-disclaimer">Your data is stored securely with Supabase. We only access your name and email.</p>
+        <p class="login-disclaimer">Your data is stored securely. We only access your name and email.</p>
       </div>
     </div>
   </div>
@@ -63,106 +60,94 @@ const features = [
 .login-page {
   min-height: 100dvh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4rem;
+  padding: 2rem;
   background: var(--app-bg);
-}
-
-@media (min-width: 768px) {
-  .login-page {
-    flex-direction: row;
-  }
 }
 
 /* ── Left: Hero ──────────────────────────────── */
 
 .login-hero {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3rem 1.5rem;
+  padding: 2.5rem 2rem;
   background: var(--sidebar-bg);
   color: #fafafa;
-}
-
-@media (min-width: 768px) {
-  .login-hero {
-    padding: 4rem 3rem;
-  }
+  border-radius: 16px;
 }
 
 .login-hero-inner {
-  max-width: 28rem;
-}
-
-.login-logo {
-  margin-bottom: 1.5rem;
+  max-width: 26rem;
 }
 
 .login-logo-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
   background: linear-gradient(135deg, #059669, #34d399);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   color: white;
+  margin-bottom: 1.25rem;
 }
 
 .login-heading {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: -0.025em;
   line-height: 1.15;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .login-tagline {
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: 0.9375rem;
+  line-height: 1.6;
   color: #a1a1aa;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .login-features {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 .login-feature {
   display: flex;
-  align-items: flex-start;
-  gap: 0.875rem;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .login-feature-icon {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: #34d399;
 }
 
 .login-feature-title {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #fafafa;
-  margin-bottom: 2px;
 }
 
 .login-feature-desc {
-  font-size: 0.8125rem;
-  color: #a1a1aa;
-  line-height: 1.5;
+  font-size: 0.75rem;
+  color: #71717a;
+  line-height: 1.4;
 }
 
 /* ── Right: Card ─────────────────────────────── */
@@ -171,35 +156,27 @@ const features = [
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3rem 1.5rem;
-}
-
-@media (min-width: 768px) {
-  .login-card-wrapper {
-    width: 420px;
-    flex-shrink: 0;
-    padding: 4rem 2.5rem;
-  }
+  flex-shrink: 0;
 }
 
 .login-card {
   width: 100%;
-  max-width: 22rem;
+  max-width: 20rem;
   text-align: center;
 }
 
 .login-card-title {
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--app-text);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
 }
 
 .login-card-subtitle {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--app-text-secondary);
-  line-height: 1.6;
-  margin-bottom: 2rem;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
 }
 
 .login-google-btn {
@@ -208,8 +185,8 @@ const features = [
   align-items: center;
   justify-content: center;
   gap: 0.625rem;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.9375rem;
+  padding: 0.6875rem 1.25rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--app-text);
   background: var(--app-surface);
@@ -224,9 +201,61 @@ const features = [
 }
 
 .login-disclaimer {
-  margin-top: 1.25rem;
-  font-size: 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.6875rem;
   color: var(--app-text-secondary);
   line-height: 1.5;
+}
+
+/* ── Mobile ──────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .login-page {
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 1.25rem;
+    justify-content: flex-start;
+    padding-top: 2rem;
+  }
+
+  .login-hero {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .login-logo-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+    border-radius: 9px;
+    margin-bottom: 1rem;
+  }
+
+  .login-heading {
+    font-size: 1.375rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .login-tagline {
+    font-size: 0.8125rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .login-features {
+    gap: 0.625rem;
+  }
+
+  .login-feature-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 0.75rem;
+  }
+
+  .login-feature-desc {
+    display: none;
+  }
+
+  .login-card-wrapper {
+    width: auto;
+  }
 }
 </style>
