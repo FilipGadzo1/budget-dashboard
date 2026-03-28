@@ -190,7 +190,7 @@ const downloadShareSummary = (): void => {
 
     <!-- Settings row -->
     <div class="card mb-6">
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div>
           <label class="form-label" for="start-month">Start month</label>
           <input id="start-month" v-model="selectedMonth" class="form-select" type="month" />
