@@ -34,11 +34,9 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
 
-  const { user, loading, initialize } = useAuth()
+  const { user, initialize } = useAuth()
 
-  if (loading.value) {
-    await initialize()
-  }
+  await initialize()
 
   if (!user.value) {
     return { name: 'login' }

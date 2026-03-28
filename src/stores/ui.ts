@@ -27,7 +27,9 @@ export const useUiStore = defineStore('ui', () => {
     }, 500)
   }
 
-  watch(snapshot, () => debouncedSave(), { deep: true })
+  watch(snapshot, () => {
+    if (isReady.value) debouncedSave()
+  }, { deep: true })
 
   const applyTheme = (mode: ThemeMode): void => {
     if (typeof document === 'undefined') return
@@ -54,9 +56,14 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const initialize = (): void => {
-    if (isReady.value) return
     applyTheme(snapshot.value.themeMode)
-    isReady.value = true
+  }
+
+  const reset = (): void => {
+    clearTimeout(saveTimer)
+    isReady.value = false
+    snapshot.value = { ...mockUiState }
+    applyTheme(mockUiState.themeMode)
   }
 
   const setThemeMode = (mode: ThemeMode): void => {
@@ -85,6 +92,7 @@ export const useUiStore = defineStore('ui', () => {
     locale,
     initialize,
     hydrate,
+    reset,
     setSelectedMonth,
     setThemeMode,
     toggleTheme,

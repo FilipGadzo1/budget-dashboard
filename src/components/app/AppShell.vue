@@ -80,7 +80,7 @@ const closeSidebar = (): void => {
           v-if="user.user_metadata?.avatar_url"
           :src="user.user_metadata.avatar_url"
           class="sidebar-user-avatar"
-          alt=""
+          :alt="user.user_metadata?.full_name || 'User avatar'"
         />
         <div class="sidebar-user-info">
           <p class="sidebar-user-name">{{ user.user_metadata?.full_name || user.email }}</p>

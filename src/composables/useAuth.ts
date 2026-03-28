@@ -12,8 +12,13 @@ function initialize(): Promise<void> {
   if (initPromise) return initPromise
 
   initPromise = new Promise<void>((resolve) => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.warn('[auth] getSession error:', error.message)
       user.value = data.session?.user ?? null
+      loading.value = false
+      resolve()
+    }).catch((err: unknown) => {
+      console.warn('[auth] getSession failed:', err)
       loading.value = false
       resolve()
     })
