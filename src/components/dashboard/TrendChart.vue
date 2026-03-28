@@ -13,9 +13,7 @@ defineProps<{
 
 <template>
   <div class="card">
-    <p class="text-label mb-1">Balance trend</p>
-    <p class="text-heading">Cumulative balance over time</p>
-    <p class="text-body mb-4 mt-1">How your projected balance evolves across the selected horizon.</p>
+    <p class="text-label mb-3">Balance trend</p>
 
     <div class="trend-chart-wrap">
       <svg viewBox="0 0 400 140" class="w-full" role="img" aria-label="Balance trend line">

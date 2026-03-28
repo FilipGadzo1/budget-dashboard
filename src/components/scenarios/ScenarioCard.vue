@@ -24,16 +24,16 @@ defineEmits<{
         <h3 class="truncate text-sm font-semibold text-primary">{{ scenario.name }}</h3>
         <span v-if="isActive" class="status-pill status-pill-positive text-xs">Active</span>
       </div>
-      <p class="mt-1 text-xs tabular-nums text-secondary">
-        {{ formatCurrency(scenario.inputs.monthlyIncome) }} income ·
-        {{ formatCurrency(scenario.inputs.monthlyExpenses) }} expenses ·
-        {{ scenario.inputs.months }}mo
-      </p>
+      <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-secondary">
+        <span>{{ formatCurrency(scenario.inputs.monthlyIncome) }} in</span>
+        <span>{{ formatCurrency(scenario.inputs.monthlyExpenses) }} out</span>
+        <span>{{ scenario.inputs.months }}mo</span>
+      </div>
     </div>
-    <div class="flex flex-shrink-0 gap-1.5">
-      <button class="btn btn-primary btn-sm" @click="$emit('load')">Load</button>
-      <button class="btn btn-ghost btn-sm" @click="$emit('rename')">Rename</button>
-      <button class="btn btn-danger btn-sm" @click="$emit('delete')">Delete</button>
+    <div class="flex gap-1.5 sm:flex-shrink-0">
+      <button class="btn btn-primary btn-sm flex-1 sm:flex-none" @click="$emit('load')">Load</button>
+      <button class="btn btn-secondary btn-sm flex-1 sm:flex-none" @click="$emit('rename')">Rename</button>
+      <button class="btn btn-danger btn-sm flex-1 sm:flex-none" @click="$emit('delete')">Delete</button>
     </div>
   </article>
 </template>
