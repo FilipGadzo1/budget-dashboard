@@ -27,6 +27,7 @@ describe('projection store', () => {
       monthlyIncome: 6000,
       monthlyExpenses: 3500,
       months: 18,
+      expenseItems: [],
     })
 
     const scenario = projectionStore.saveScenario('Stretch plan')
@@ -38,6 +39,7 @@ describe('projection store', () => {
       monthlyIncome: 4200,
       monthlyExpenses: 2800,
       months: 12,
+      expenseItems: [],
     })
     projectionStore.loadScenario(scenario.id)
 
@@ -45,6 +47,7 @@ describe('projection store', () => {
       monthlyIncome: 6000,
       monthlyExpenses: 3500,
       months: 18,
+      expenseItems: [],
     })
 
     projectionStore.deleteScenario(scenario.id)
@@ -58,6 +61,7 @@ describe('projection store', () => {
       monthlyIncome: 5300,
       monthlyExpenses: 3100,
       months: 10,
+      expenseItems: [],
     })
 
     projectionStore.saveScenario('Imported later')
@@ -77,6 +81,7 @@ describe('projection store', () => {
       monthlyIncome: 4000,
       monthlyExpenses: 2600,
       months: 12,
+      expenseItems: [],
     })
 
     const scenario = projectionStore.saveScenario('Base plan')
@@ -85,6 +90,7 @@ describe('projection store', () => {
       monthlyIncome: 4700,
       monthlyExpenses: 2800,
       months: 18,
+      expenseItems: [],
     })
 
     expect(projectionStore.overwriteActiveScenario('Growth plan')).toBe(true)
@@ -93,6 +99,7 @@ describe('projection store', () => {
       monthlyIncome: 4700,
       monthlyExpenses: 2800,
       months: 18,
+      expenseItems: [],
     })
 
     expect(projectionStore.renameScenario(scenario.id, 'Travel year')).toBe(true)
@@ -105,6 +112,7 @@ describe('projection store', () => {
       monthlyIncome: 4100,
       monthlyExpenses: 2600,
       months: 12,
+      expenseItems: [],
     })
     projectionStore.saveScenario('Baseline plan')
 

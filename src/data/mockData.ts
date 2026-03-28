@@ -7,6 +7,7 @@ export const mockProjectionInputs: ProjectionInputs = {
   monthlyIncome: 4200,
   monthlyExpenses: 2850,
   months: 12,
+  expenseItems: [],
 }
 
 export const mockProjectionState: ProjectionStateSnapshot = {

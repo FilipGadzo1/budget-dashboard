@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
 import { mockProjectionInputs } from '@/data/mockData'
-import type { ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
+import type { ExpenseItem, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
 import {
   deleteScenario as dbDeleteScenario,
   fetchProjectionInputs,
@@ -11,6 +11,7 @@ import {
   insertScenario,
   saveProjectionInputs,
   setActiveScenario,
+  syncExpenseItems,
   updateScenario,
 } from '@/services/database'
 
@@ -46,6 +47,13 @@ const buildImportedScenarioName = (
 }
 
 let inputsSaveTimer: ReturnType<typeof setTimeout> | undefined
+let expenseItemsSaveTimer: ReturnType<typeof setTimeout> | undefined
+
+const defaultSnapshot = (): ProjectionStateSnapshot => ({
+  inputs: { ...mockProjectionInputs },
+  savedScenarios: [],
+  activeScenarioId: null,
+})
 
 const defaultSnapshot = (): ProjectionStateSnapshot => ({
   inputs: { ...mockProjectionInputs },
@@ -93,6 +101,7 @@ export const useProjectionStore = defineStore('projection', () => {
 
   const resetStore = (): void => {
     clearTimeout(inputsSaveTimer)
+    clearTimeout(expenseItemsSaveTimer)
     isReady.value = false
     snapshot.value = defaultSnapshot()
   }
@@ -100,7 +109,20 @@ export const useProjectionStore = defineStore('projection', () => {
   const buildScenarioName = (): string => `Scenario ${snapshot.value.savedScenarios.length + 1}`
 
   const setInputs = (nextInputs: ProjectionInputs): void => {
-    snapshot.value = { ...snapshot.value, inputs: { ...nextInputs } }
+    snapshot.value = { ...snapshot.value, inputs: { ...snapshot.value.inputs, ...nextInputs } }
+  }
+
+  const setExpenseItems = (items: ExpenseItem[]): void => {
+    snapshot.value = {
+      ...snapshot.value,
+      inputs: { ...snapshot.value.inputs, expenseItems: items },
+    }
+
+    clearTimeout(expenseItemsSaveTimer)
+    expenseItemsSaveTimer = setTimeout(() => {
+      const userId = getUserId()
+      if (userId && isReady.value) void syncExpenseItems(userId, snapshot.value.inputs.expenseItems)
+    }, 500)
   }
 
   const reset = (): void => {
@@ -189,6 +211,7 @@ export const useProjectionStore = defineStore('projection', () => {
         monthly_income: snapshot.value.inputs.monthlyIncome,
         monthly_expenses: snapshot.value.inputs.monthlyExpenses,
         months: snapshot.value.inputs.months,
+        expense_items: JSON.stringify(snapshot.value.inputs.expenseItems ?? []),
       })
     }
     return overwritten
@@ -267,6 +290,7 @@ export const useProjectionStore = defineStore('projection', () => {
     hydrate,
     resetStore,
     setInputs,
+    setExpenseItems,
     reset,
     saveScenario,
     loadScenario,

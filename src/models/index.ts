@@ -1,9 +1,17 @@
 export type ThemeMode = 'light' | 'dark'
 
+export interface ExpenseItem {
+  id: string
+  name: string
+  amount: number
+  sortOrder: number
+}
+
 export interface ProjectionInputs {
   monthlyIncome: number
   monthlyExpenses: number
   months: number
+  expenseItems: ExpenseItem[]
 }
 
 export interface ProjectionScenario {
