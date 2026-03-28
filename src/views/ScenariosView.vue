@@ -4,12 +4,14 @@ import { reactive, ref } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 
+import ConfirmDeleteDialog from '@/components/shared/ConfirmDeleteDialog.vue'
+import DialogHeader from '@/components/shared/DialogHeader.vue'
+import EmptyState from '@/components/shared/EmptyState.vue'
+import StatusMessage from '@/components/shared/StatusMessage.vue'
+import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import type { ProjectionScenario } from '@/models'
 import { useProjectionStore } from '@/stores/projection'
-
-import ConfirmDeleteDialog from '@/components/shared/ConfirmDeleteDialog.vue'
-import EmptyState from '@/components/shared/EmptyState.vue'
 
 const projectionStore = useProjectionStore()
 const { formatCurrency } = useCurrency()
@@ -32,9 +34,7 @@ const saveScenario = (): void => {
   scenarioName.value = ''
 }
 
-const loadScenario = (id: string): void => {
-  projectionStore.loadScenario(id)
-}
+const loadScenario = (id: string): void => { projectionStore.loadScenario(id) }
 
 const openRename = (scenario: ProjectionScenario): void => {
   renameTarget.value = scenario
@@ -55,9 +55,7 @@ const openDelete = (id: string): void => {
 }
 
 const confirmDelete = (): void => {
-  if (deleteTargetId.value) {
-    projectionStore.deleteScenario(deleteTargetId.value)
-  }
+  if (deleteTargetId.value) projectionStore.deleteScenario(deleteTargetId.value)
   deleteTargetId.value = null
 }
 
@@ -67,8 +65,7 @@ const overwriteActive = (): void => {
 }
 
 const exportFile = (): void => {
-  const payload = projectionStore.exportScenarios()
-  const blob = new Blob([payload], { type: 'application/json' })
+  const blob = new Blob([projectionStore.exportScenarios()], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -81,13 +78,9 @@ const importFile = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-
   try {
-    const payload = await file.text()
-    const imported = projectionStore.importScenarios(payload)
-    importState.message = imported
-      ? `Imported ${imported} scenario${imported === 1 ? '' : 's'}.`
-      : 'No new scenarios found.'
+    const imported = projectionStore.importScenarios(await file.text())
+    importState.message = imported ? `Imported ${imported} scenario${imported === 1 ? '' : 's'}.` : 'No new scenarios found.'
     importState.tone = imported ? 'success' : 'neutral'
   } catch {
     importState.message = 'Could not import file.'
@@ -110,22 +103,13 @@ const importFile = async (event: Event): Promise<void> => {
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div class="flex-1">
           <label class="form-label" for="scenario-name">Scenario name</label>
-          <InputText
-            id="scenario-name"
-            v-model="scenarioName"
-            placeholder="e.g. Conservative plan"
-            class="w-full"
-          />
+          <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" />
         </div>
-        <div class="flex gap-2 flex-shrink-0">
+        <div class="flex flex-shrink-0 gap-2">
           <button class="btn btn-primary" @click="saveScenario">
             <i class="pi pi-save text-sm" /> Save current
           </button>
-          <button
-            v-if="projectionStore.activeScenarioId"
-            class="btn btn-secondary"
-            @click="overwriteActive"
-          >
+          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary" @click="overwriteActive">
             Overwrite active
           </button>
         </div>
@@ -133,7 +117,7 @@ const importFile = async (event: Event): Promise<void> => {
     </div>
 
     <!-- Import/Export bar -->
-    <div class="flex flex-wrap items-center gap-3 mb-6">
+    <div class="mb-6 flex flex-wrap items-center gap-3">
       <button class="btn btn-secondary btn-sm" @click="exportFile">
         <i class="pi pi-upload text-xs" /> Export all
       </button>
@@ -141,13 +125,7 @@ const importFile = async (event: Event): Promise<void> => {
         <i class="pi pi-download text-xs" /> Import
         <input class="import-input" type="file" accept="application/json" @change="importFile" />
       </label>
-      <p
-        v-if="importState.message"
-        class="text-sm"
-        :class="importState.tone === 'success' ? 'text-positive' : importState.tone === 'error' ? 'text-negative' : 'text-secondary'"
-      >
-        {{ importState.message }}
-      </p>
+      <StatusMessage :message="importState.message" :tone="importState.tone" />
     </div>
 
     <!-- Empty state -->
@@ -162,42 +140,22 @@ const importFile = async (event: Event): Promise<void> => {
 
     <!-- Scenario list -->
     <div v-else class="grid gap-3 lg:grid-cols-2">
-      <article
+      <ScenarioCard
         v-for="scenario in projectionStore.savedScenarios"
         :key="scenario.id"
-        class="scenario-card"
-        :class="{ 'scenario-card-active': scenario.id === projectionStore.activeScenarioId }"
-      >
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold truncate" style="color: var(--app-text)">{{ scenario.name }}</h3>
-            <span v-if="scenario.id === projectionStore.activeScenarioId" class="status-pill status-pill-positive text-xs">Active</span>
-          </div>
-          <p class="mt-1 text-xs text-secondary tabular-nums">
-            {{ formatCurrency(scenario.inputs.monthlyIncome) }} income · {{ formatCurrency(scenario.inputs.monthlyExpenses) }} expenses · {{ scenario.inputs.months }}mo
-          </p>
-        </div>
-        <div class="flex gap-1.5 flex-shrink-0">
-          <button class="btn btn-primary btn-sm" @click="loadScenario(scenario.id)">Load</button>
-          <button class="btn btn-ghost btn-sm" @click="openRename(scenario)">Rename</button>
-          <button class="btn btn-danger btn-sm" @click="openDelete(scenario.id)">Delete</button>
-        </div>
-      </article>
+        :scenario="scenario"
+        :is-active="scenario.id === projectionStore.activeScenarioId"
+        :format-currency="formatCurrency"
+        @load="loadScenario(scenario.id)"
+        @rename="openRename(scenario)"
+        @delete="openDelete(scenario.id)"
+      />
     </div>
 
     <!-- Rename dialog -->
-    <Dialog
-      v-model:visible="showRenameDialog"
-      modal
-      dismissable-mask
-      :draggable="false"
-      :style="{ width: 'min(92vw, 26rem)' }"
-    >
+    <Dialog v-model:visible="showRenameDialog" modal dismissable-mask :draggable="false" :style="{ width: 'min(92vw, 26rem)' }">
       <template #header>
-        <div>
-          <p class="text-label">Rename</p>
-          <h3 class="mt-1 text-lg font-semibold" style="color: var(--app-text)">Rename scenario</h3>
-        </div>
+        <DialogHeader label="Rename" title="Rename scenario" />
       </template>
       <div>
         <label class="form-label" for="rename-input">New name</label>

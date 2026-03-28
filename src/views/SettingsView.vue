@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
+import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
 import { useProjectionStore } from '@/stores/projection'
@@ -27,7 +28,6 @@ const { getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateD
 
 const supportedCurrencyCodes = currencyOptions.map((o) => o.value)
 const currentRates = computed(() => getRatesFor(currencyCode.value, supportedCurrencyCodes))
-
 const currencyLabel = (code: string): string =>
   currencyOptions.find((o) => o.value === code)?.label.split(' (')[0] ?? code
 
@@ -88,7 +88,7 @@ onMounted(() => { void fetchRates() })
 
       <div class="mt-5">
         <label class="form-label">Theme</label>
-        <div class="flex gap-2 mt-1">
+        <div class="mt-1 flex gap-2">
           <button
             class="btn btn-sm"
             :class="uiStore.themeMode === 'light' ? 'btn-primary' : 'btn-secondary'"
@@ -111,47 +111,37 @@ onMounted(() => { void fetchRates() })
     <div class="card mb-6">
       <p class="text-heading mb-1">Exchange rates</p>
       <p class="text-body mb-4">Live reference rates from the European Central Bank.</p>
-
-      <div v-if="ratesLoading" class="flex items-center gap-2 text-sm text-secondary py-2">
-        <i class="pi pi-spin pi-spinner" /> Loading rates…
-      </div>
-      <div v-else-if="ratesError" class="flex items-center gap-2 text-sm text-secondary py-2">
-        <i class="pi pi-exclamation-triangle" /> {{ ratesError }}
-      </div>
-      <template v-else>
-        <p class="text-sm text-secondary mb-3">1 {{ currencyCode }} ≈</p>
-        <div class="grid gap-3 sm:grid-cols-3">
-          <div
-            v-for="rate in currentRates"
-            :key="rate.code"
-            class="flex items-center justify-between rounded-lg border px-4 py-3"
-            style="border-color: var(--app-border); background: var(--app-surface);"
-          >
-            <span class="text-sm text-secondary">{{ currencyLabel(rate.code) }}</span>
-            <span class="text-sm font-semibold tabular-nums" style="color: var(--app-text)">{{ rate.rate }} {{ rate.code }}</span>
-          </div>
-        </div>
-        <p v-if="rateDate" class="mt-3 text-xs text-secondary">Updated {{ rateDate }}</p>
-      </template>
+      <ExchangeRatesPanel
+        :currency-code="currencyCode"
+        :rates="currentRates"
+        :rate-date="rateDate"
+        :loading="ratesLoading"
+        :error="ratesError"
+        :currency-label="currencyLabel"
+        layout="grid"
+      />
     </div>
 
     <!-- Data management -->
     <div class="card">
       <p class="text-heading mb-1">Data management</p>
-      <p class="text-body mb-4">All data is stored locally in your browser. Nothing is sent to a server.</p>
+      <p class="text-body mb-4">All data is stored in the cloud linked to your account.</p>
 
-      <div class="flex items-center justify-between rounded-lg border px-4 py-3" style="border-color: var(--app-border);">
+      <div class="flex items-center justify-between rounded-lg border border-app px-4 py-3">
         <div>
-          <p class="text-sm font-medium" style="color: var(--app-text)">Reset all data</p>
-          <p class="text-xs text-secondary mt-0.5">Revert inputs and clear all saved scenarios.</p>
+          <p class="text-sm font-medium text-primary">Reset all data</p>
+          <p class="mt-0.5 text-xs text-secondary">Revert inputs and clear all saved scenarios.</p>
         </div>
         <button class="btn btn-danger btn-sm" @click="showResetConfirm = true">Reset</button>
       </div>
 
-      <!-- Reset confirmation -->
-      <div v-if="showResetConfirm" class="mt-3 rounded-lg border p-4" style="border-color: var(--app-negative-border); background: var(--app-negative-soft);">
+      <div
+        v-if="showResetConfirm"
+        class="mt-3 rounded-lg border p-4"
+        style="border-color: var(--app-negative-border); background: var(--app-negative-soft);"
+      >
         <p class="text-sm font-medium text-negative">Are you sure? This will erase all saved scenarios and reset inputs to defaults.</p>
-        <div class="flex gap-2 mt-3">
+        <div class="mt-3 flex gap-2">
           <button class="btn btn-danger btn-sm" @click="resetAll">Confirm reset</button>
           <button class="btn btn-secondary btn-sm" @click="showResetConfirm = false">Cancel</button>
         </div>
