@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
+import AppShell from '@/components/app/AppShell.vue'
 import { useAuth } from '@/composables/useAuth'
 
 const routes: RouteRecordRaw[] = [
@@ -11,23 +12,13 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    name: 'dashboard',
-    component: () => import('@/views/DashboardView.vue'),
-  },
-  {
-    path: '/projections',
-    name: 'projections',
-    component: () => import('@/views/ProjectionsView.vue'),
-  },
-  {
-    path: '/scenarios',
-    name: 'scenarios',
-    component: () => import('@/views/ScenariosView.vue'),
-  },
-  {
-    path: '/settings',
-    name: 'settings',
-    component: () => import('@/views/SettingsView.vue'),
+    component: AppShell,
+    children: [
+      { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+      { path: 'projections', name: 'projections', component: () => import('@/views/ProjectionsView.vue') },
+      { path: 'scenarios', name: 'scenarios', component: () => import('@/views/ScenariosView.vue') },
+      { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+    ],
   },
   {
     path: '/budgets',
@@ -40,12 +31,16 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
-  const { user, loading } = useAuth()
-
+router.beforeEach(async (to) => {
   if (to.meta.public) return true
 
-  if (!loading.value && !user.value) {
+  const { user, loading, initialize } = useAuth()
+
+  if (loading.value) {
+    await initialize()
+  }
+
+  if (!user.value) {
     return { name: 'login' }
   }
 

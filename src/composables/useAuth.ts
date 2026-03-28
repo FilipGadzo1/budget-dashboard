@@ -6,20 +6,25 @@ import { supabase } from '@/lib/supabase'
 const user = ref<User | null>(null)
 const loading = ref(true)
 
-let initialized = false
+let initPromise: Promise<void> | null = null
 
-async function initialize(): Promise<void> {
-  if (initialized) return
-  initialized = true
+function initialize(): Promise<void> {
+  if (initPromise) return initPromise
 
-  const { data } = await supabase.auth.getSession()
-  user.value = data.session?.user ?? null
-  loading.value = false
+  initPromise = new Promise<void>((resolve) => {
+    supabase.auth.getSession().then(({ data }) => {
+      user.value = data.session?.user ?? null
+      loading.value = false
+      resolve()
+    })
 
-  supabase.auth.onAuthStateChange((_event, session) => {
-    user.value = session?.user ?? null
-    loading.value = false
+    supabase.auth.onAuthStateChange((_event, session) => {
+      user.value = session?.user ?? null
+      loading.value = false
+    })
   })
+
+  return initPromise
 }
 
 async function signInWithGoogle(): Promise<void> {
@@ -30,7 +35,7 @@ async function signInWithGoogle(): Promise<void> {
 }
 
 async function signOut(): Promise<void> {
-  await supabase.auth.signOut()
+  await supabase.auth.signOut({ scope: 'local' })
   user.value = null
 }
 
