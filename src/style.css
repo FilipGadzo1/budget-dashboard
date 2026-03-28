@@ -103,7 +103,7 @@ button, input, select, textarea {
   top: 0;
   left: 0;
   width: 260px;
-  height: 100vh;
+  height: 100dvh;
   background: var(--sidebar-bg);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
@@ -153,6 +153,8 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-link {
@@ -203,6 +205,7 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .sidebar-user {
