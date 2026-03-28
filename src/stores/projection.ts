@@ -31,9 +31,8 @@ const buildImportedScenarioName = (
   inputs: ProjectionInputs,
 ): string | null => {
   const matchingName = scenarios.find(
-    (scenario) => scenario.name.trim().toLowerCase() === preferredName.trim().toLowerCase(),
+    (s) => s.name.trim().toLowerCase() === preferredName.trim().toLowerCase(),
   )
-
   if (!matchingName) return preferredName
   if (sameProjectionInputs(matchingName.inputs, inputs)) return null
 
@@ -48,12 +47,15 @@ const buildImportedScenarioName = (
 
 let inputsSaveTimer: ReturnType<typeof setTimeout> | undefined
 
+const defaultSnapshot = (): ProjectionStateSnapshot => ({
+  inputs: { ...mockProjectionInputs },
+  savedScenarios: [],
+  activeScenarioId: null,
+})
+
 export const useProjectionStore = defineStore('projection', () => {
-  const snapshot = ref<ProjectionStateSnapshot>({
-    inputs: { ...mockProjectionInputs },
-    savedScenarios: [],
-    activeScenarioId: null,
-  })
+  const snapshot = ref<ProjectionStateSnapshot>(defaultSnapshot())
+  const isReady = ref(false)
 
   const getUserId = (): string | null => {
     const { user } = useAuth()
@@ -68,7 +70,9 @@ export const useProjectionStore = defineStore('projection', () => {
     }, 500)
   }
 
-  watch(() => snapshot.value.inputs, () => debouncedSaveInputs(), { deep: true })
+  watch(() => snapshot.value.inputs, () => {
+    if (isReady.value) debouncedSaveInputs()
+  }, { deep: true })
 
   const hydrate = async (): Promise<void> => {
     const userId = getUserId()
@@ -84,6 +88,13 @@ export const useProjectionStore = defineStore('projection', () => {
       savedScenarios: scenarioData.scenarios,
       activeScenarioId: scenarioData.activeScenarioId,
     }
+    isReady.value = true
+  }
+
+  const resetStore = (): void => {
+    clearTimeout(inputsSaveTimer)
+    isReady.value = false
+    snapshot.value = defaultSnapshot()
   }
 
   const buildScenarioName = (): string => `Scenario ${snapshot.value.savedScenarios.length + 1}`
@@ -184,13 +195,11 @@ export const useProjectionStore = defineStore('projection', () => {
   }
 
   const deleteScenario = (scenarioId: string): void => {
-    const next = snapshot.value.savedScenarios.filter((e) => e.id !== scenarioId)
     snapshot.value = {
       ...snapshot.value,
-      savedScenarios: next,
+      savedScenarios: snapshot.value.savedScenarios.filter((e) => e.id !== scenarioId),
       activeScenarioId: snapshot.value.activeScenarioId === scenarioId ? null : snapshot.value.activeScenarioId,
     }
-
     void dbDeleteScenario(scenarioId)
   }
 
@@ -254,7 +263,9 @@ export const useProjectionStore = defineStore('projection', () => {
     inputs: computed(() => snapshot.value.inputs),
     savedScenarios: computed(() => snapshot.value.savedScenarios),
     activeScenarioId: computed(() => snapshot.value.activeScenarioId),
+    isReady,
     hydrate,
+    resetStore,
     setInputs,
     reset,
     saveScenario,

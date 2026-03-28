@@ -15,17 +15,21 @@ const hydrateStores = async (): Promise<void> => {
   await Promise.all([uiStore.hydrate(), projectionStore.hydrate()])
 }
 
-watch(user, (u, oldU) => {
-  if (u) {
+watch(user, (u, prev) => {
+  if (u && !prev) {
+    // New login — hydrate from DB
     void hydrateStores()
-  } else if (oldU && !u) {
+  } else if (!u && prev) {
+    // Logout — clear store state immediately
+    uiStore.reset()
+    projectionStore.resetStore()
     void router.push({ name: 'login' })
   }
 })
 
 onMounted(async () => {
-  await initAuth()
   uiStore.initialize()
+  await initAuth()
   if (user.value) {
     await hydrateStores()
   }
@@ -41,7 +45,7 @@ onMounted(async () => {
 
 <style scoped>
 .app-loading {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;

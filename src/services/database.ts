@@ -1,6 +1,14 @@
 import { supabase } from '@/lib/supabase'
 import type { ProjectionInputs, ProjectionScenario, UiStateSnapshot } from '@/models'
 
+type ScenarioUpdates = Partial<{
+  name: string
+  monthly_income: number
+  monthly_expenses: number
+  months: number
+  is_active: boolean
+}>
+
 // --- Profile (UI preferences) ---
 
 export async function fetchProfile(userId: string): Promise<UiStateSnapshot | null> {
@@ -10,7 +18,10 @@ export async function fetchProfile(userId: string): Promise<UiStateSnapshot | nu
     .eq('id', userId)
     .single()
 
-  if (error || !data) return null
+  if (error) {
+    if (error.code !== 'PGRST116') console.warn('[db] fetchProfile error:', error.message)
+    return null
+  }
 
   return {
     themeMode: data.theme_mode as UiStateSnapshot['themeMode'],
@@ -21,7 +32,7 @@ export async function fetchProfile(userId: string): Promise<UiStateSnapshot | nu
 }
 
 export async function saveProfile(userId: string, prefs: UiStateSnapshot): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('profiles')
     .update({
       theme_mode: prefs.themeMode,
@@ -30,6 +41,8 @@ export async function saveProfile(userId: string, prefs: UiStateSnapshot): Promi
       selected_month: prefs.selectedMonth,
     })
     .eq('id', userId)
+
+  if (error) console.warn('[db] saveProfile error:', error.message)
 }
 
 // --- Projection inputs ---
@@ -41,7 +54,10 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
     .eq('user_id', userId)
     .single()
 
-  if (error || !data) return null
+  if (error) {
+    if (error.code !== 'PGRST116') console.warn('[db] fetchProjectionInputs error:', error.message)
+    return null
+  }
 
   return {
     monthlyIncome: Number(data.monthly_income),
@@ -51,7 +67,7 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
 }
 
 export async function saveProjectionInputs(userId: string, inputs: ProjectionInputs): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('projection_inputs')
     .update({
       monthly_income: inputs.monthlyIncome,
@@ -59,6 +75,8 @@ export async function saveProjectionInputs(userId: string, inputs: ProjectionInp
       months: inputs.months,
     })
     .eq('user_id', userId)
+
+  if (error) console.warn('[db] saveProjectionInputs error:', error.message)
 }
 
 // --- Scenarios ---
@@ -70,10 +88,13 @@ export async function fetchScenarios(userId: string): Promise<{ scenarios: Proje
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
-  if (error || !data) return { scenarios: [], activeScenarioId: null }
+  if (error) {
+    console.warn('[db] fetchScenarios error:', error.message)
+    return { scenarios: [], activeScenarioId: null }
+  }
 
   let activeScenarioId: string | null = null
-  const scenarios: ProjectionScenario[] = data.map((row) => {
+  const scenarios: ProjectionScenario[] = (data ?? []).map((row) => {
     if (row.is_active) activeScenarioId = row.id
     return {
       id: row.id,
@@ -95,7 +116,7 @@ export async function insertScenario(userId: string, scenario: ProjectionScenari
     await supabase.from('scenarios').update({ is_active: false }).eq('user_id', userId)
   }
 
-  await supabase.from('scenarios').insert({
+  const { error } = await supabase.from('scenarios').insert({
     id: scenario.id,
     user_id: userId,
     name: scenario.name,
@@ -104,19 +125,36 @@ export async function insertScenario(userId: string, scenario: ProjectionScenari
     months: scenario.inputs.months,
     is_active: isActive,
   })
+
+  if (error) console.warn('[db] insertScenario error:', error.message)
 }
 
-export async function updateScenario(scenarioId: string, updates: Partial<{ name: string; monthly_income: number; monthly_expenses: number; months: number; is_active: boolean }>): Promise<void> {
-  await supabase.from('scenarios').update(updates).eq('id', scenarioId)
+export async function updateScenario(scenarioId: string, updates: ScenarioUpdates): Promise<void> {
+  const { error } = await supabase.from('scenarios').update(updates).eq('id', scenarioId)
+  if (error) console.warn('[db] updateScenario error:', error.message)
 }
 
 export async function deleteScenario(scenarioId: string): Promise<void> {
-  await supabase.from('scenarios').delete().eq('id', scenarioId)
+  const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId)
+  if (error) console.warn('[db] deleteScenario error:', error.message)
 }
 
 export async function setActiveScenario(userId: string, scenarioId: string | null): Promise<void> {
-  await supabase.from('scenarios').update({ is_active: false }).eq('user_id', userId)
+  const { error: clearError } = await supabase
+    .from('scenarios')
+    .update({ is_active: false })
+    .eq('user_id', userId)
+
+  if (clearError) {
+    console.warn('[db] setActiveScenario clear error:', clearError.message)
+    return
+  }
+
   if (scenarioId) {
-    await supabase.from('scenarios').update({ is_active: true }).eq('id', scenarioId)
+    const { error } = await supabase
+      .from('scenarios')
+      .update({ is_active: true })
+      .eq('id', scenarioId)
+    if (error) console.warn('[db] setActiveScenario activate error:', error.message)
   }
 }
