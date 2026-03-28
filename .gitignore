@@ -1,7 +1,6 @@
 # Dependencies
 node_modules/
 *.pem
-package-lock.json
 yarn.lock
 
 # Build & Dist
