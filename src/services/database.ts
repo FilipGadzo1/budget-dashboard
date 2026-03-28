@@ -10,14 +10,6 @@ type ScenarioUpdates = Partial<{
   is_active: boolean
 }>
 
-type ScenarioUpdates = Partial<{
-  name: string
-  monthly_income: number
-  monthly_expenses: number
-  months: number
-  is_active: boolean
-}>
-
 // --- Profile (UI preferences) ---
 
 export async function fetchProfile(userId: string): Promise<UiStateSnapshot | null> {
