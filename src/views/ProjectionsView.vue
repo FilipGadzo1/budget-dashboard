@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 
+import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
@@ -67,6 +68,7 @@ const displayedExpenses = computed({
 
 const showExpensesDialog = ref(false)
 const expensesDialogMode = ref<'view' | 'edit'>('view')
+const showExpensesHint = ref(false)
 
 const openExpensesView = (): void => {
   expensesDialogMode.value = 'view'
@@ -190,7 +192,7 @@ const downloadShareSummary = (): void => {
 
     <!-- Settings row -->
     <div class="card mb-6">
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div>
           <label class="form-label" for="start-month">Start month</label>
           <input id="start-month" v-model="selectedMonth" class="form-select" type="month" />
@@ -234,39 +236,41 @@ const downloadShareSummary = (): void => {
       <form class="grid gap-4 sm:grid-cols-3" @submit.prevent>
         <div>
           <label class="form-label" for="monthly-income">Monthly income</label>
-          <InputNumber
-            id="monthly-income"
+          <CurrencyInput
+            input-id="monthly-income"
             v-model="form.monthlyIncome"
-            mode="currency"
             :currency="currencyCode"
             :locale="locale"
-            :min="0"
-            :use-grouping="true"
-            :class="{ 'app-input-invalid': formErrors.monthlyIncome }"
-            fluid
+            :invalid="!!formErrors.monthlyIncome"
           />
           <p v-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
         </div>
         <div>
-          <label class="form-label flex items-center gap-1" for="monthly-expenses">
-            Monthly expenses
-            <i
-              class="pi pi-info-circle cursor-default"
-              style="font-size: 0.625rem; color: var(--app-accent);"
-              v-tooltip.top="{ value: 'Enter a fixed monthly amount, or click &quot;Add expense items&quot; above to break it down into named line items. When items are active their sum overrides this field.', showDelay: 300 }"
-            />
-          </label>
-          <InputNumber
-            id="monthly-expenses"
+          <div class="form-label flex items-center gap-1">
+            <label for="monthly-expenses">Monthly expenses</label>
+            <span
+              class="relative inline-flex ml-1 p-1"
+              @touchstart.prevent="showExpensesHint = true"
+              @touchend="showExpensesHint = false"
+              @touchcancel="showExpensesHint = false"
+            >
+              <i
+                class="pi pi-info-circle cursor-default"
+                style="font-size: 0.625rem; color: var(--app-accent);"
+                v-tooltip.top="{ value: 'Enter a fixed monthly amount, or click &quot;Add expense items&quot; above to break it down into named line items. When items are active their sum overrides this field.', showDelay: 300 }"
+              />
+              <div v-if="showExpensesHint">
+                Enter a fixed monthly amount, or click "Add expense items" above to break it down into named line items. When items are active their sum overrides this field.
+              </div>
+            </span>
+          </div>
+          <CurrencyInput
+            input-id="monthly-expenses"
             v-model="displayedExpenses"
-            mode="currency"
             :currency="currencyCode"
             :locale="locale"
-            :min="0"
-            :use-grouping="true"
             :disabled="hasExpenseItems"
-            :class="{ 'app-input-invalid': formErrors.monthlyExpenses }"
-            fluid
+            :invalid="!!formErrors.monthlyExpenses"
           />
           <p v-if="hasExpenseItems" class="mt-1 text-xs text-secondary">
             Calculated from {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}

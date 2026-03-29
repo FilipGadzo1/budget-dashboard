@@ -67,7 +67,7 @@ onMounted(() => { void fetchRates() })
     <!-- Display preferences -->
     <div class="card mb-6">
       <p class="text-heading mb-4">Display preferences</p>
-      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div>
           <label class="form-label" for="s-currency">Currency</label>
           <select id="s-currency" v-model="selectedCurrencyCode" class="form-select">

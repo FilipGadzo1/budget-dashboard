@@ -87,7 +87,7 @@ const insights = computed(() => {
     </div>
 
     <!-- KPI Grid -->
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <article v-for="kpi in kpis" :key="kpi.label" class="kpi-card">
         <p class="text-label">{{ kpi.label }}</p>
         <p class="kpi-value" :class="kpi.tone">{{ kpi.value }}</p>
@@ -95,7 +95,7 @@ const insights = computed(() => {
     </div>
 
     <!-- Trend + Insights -->
-    <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+    <div class="mt-4 grid gap-3 sm:mt-6 sm:gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <TrendChart
         :trend-path="trendPath"
         :trend-fill-path="trendFillPath"
@@ -109,7 +109,7 @@ const insights = computed(() => {
         <article
           v-for="insight in insights"
           :key="insight.title"
-          class="insight-card"
+          class="insight-card hidden sm:block"
           :class="insight.tone === 'warning' ? 'insight-warning' : 'insight-positive'"
         >
           <p class="text-sm font-semibold text-primary">{{ insight.title }}</p>

@@ -8,8 +8,8 @@ defineProps<{
 
 <template>
   <div class="card">
-    <p class="text-label mb-3">Milestones</p>
-    <div class="flex flex-col gap-3">
+    <p class="text-label mb-2">Milestones</p>
+    <div class="flex flex-col gap-2 sm:gap-3">
       <div class="flex items-center justify-between">
         <span class="text-body">First negative month</span>
         <span class="text-sm font-semibold tabular-nums text-primary">

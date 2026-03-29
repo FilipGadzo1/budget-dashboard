@@ -105,11 +105,11 @@ const importFile = async (event: Event): Promise<void> => {
           <label class="form-label" for="scenario-name">Scenario name</label>
           <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" />
         </div>
-        <div class="flex flex-shrink-0 gap-2">
-          <button class="btn btn-primary" @click="saveScenario">
+        <div class="flex gap-2 sm:flex-shrink-0">
+          <button class="btn btn-primary flex-1 sm:flex-none" @click="saveScenario">
             <i class="pi pi-save text-sm" /> Save current
           </button>
-          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary" @click="overwriteActive">
+          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary flex-1 sm:flex-none" @click="overwriteActive">
             Overwrite active
           </button>
         </div>
