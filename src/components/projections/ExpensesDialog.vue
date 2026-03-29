@@ -2,9 +2,9 @@
 import { computed, ref, watch } from 'vue'
 
 import Dialog from 'primevue/dialog'
-import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 
+import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import type { ExpenseItem } from '@/models'
 
@@ -126,14 +126,11 @@ const removeItem = (index: number): void => {
             placeholder="Expense name"
             class="min-w-0 flex-1"
           />
-          <InputNumber
+          <CurrencyInput
             v-model="draft[index].amount"
-            mode="currency"
             :currency="currency"
             :locale="locale"
-            :min="0"
-            :use-grouping="true"
-            class="w-36 flex-shrink-0"
+            class="w-40 flex-shrink-0"
           />
           <button class="btn btn-ghost btn-icon flex-shrink-0 text-secondary hover:text-negative" @click="removeItem(index)">
             <i class="pi pi-times text-xs" />
