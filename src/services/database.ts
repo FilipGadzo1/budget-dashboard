@@ -190,6 +190,11 @@ export async function deleteScenario(scenarioId: string): Promise<void> {
   if (error) console.warn('[db] deleteScenario error:', error.message)
 }
 
+export async function deleteAllScenarios(userId: string): Promise<void> {
+  const { error } = await supabase.from('scenarios').delete().eq('user_id', userId)
+  if (error) console.warn('[db] deleteAllScenarios error:', error.message)
+}
+
 export async function setActiveScenario(userId: string, scenarioId: string | null): Promise<void> {
   const { error: clearError } = await supabase
     .from('scenarios')

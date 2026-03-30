@@ -11,12 +11,19 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
+    path: '/invite/:token',
+    name: 'invite',
+    component: () => import('@/views/InviteView.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/',
     component: AppShell,
     children: [
       { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
       { path: 'projections', name: 'projections', component: () => import('@/views/ProjectionsView.vue') },
       { path: 'scenarios', name: 'scenarios', component: () => import('@/views/ScenariosView.vue') },
+      { path: 'collaboration', name: 'collaboration', component: () => import('@/views/CollaborationView.vue') },
       { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     ],
   },

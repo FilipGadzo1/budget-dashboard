@@ -79,9 +79,12 @@ export const useUiStore = defineStore('ui', () => {
     snapshot.value = { ...snapshot.value, ...preferences }
   }
 
-  const clearAllData = (): void => {
+  const clearAllData = async (): Promise<void> => {
+    clearTimeout(saveTimer)
     snapshot.value = { ...mockUiState }
     applyTheme(snapshot.value.themeMode)
+    const { user } = useAuth()
+    if (user.value) await saveProfile(user.value.id, snapshot.value)
   }
 
   return {

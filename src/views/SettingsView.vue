@@ -1,60 +1,74 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
-import { useCurrency } from '@/composables/useCurrency'
-import { useExchangeRates } from '@/composables/useExchangeRates'
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useUiStore } from '@/stores/ui'
 
 const currencyOptions = [
-  { value: 'SEK', label: 'Swedish Krona (SEK)' },
   { value: 'EUR', label: 'Euro (EUR)' },
   { value: 'USD', label: 'US Dollar (USD)' },
   { value: 'GBP', label: 'British Pound (GBP)' },
+  { value: 'SEK', label: 'Swedish Krona (SEK)' },
 ]
 
 const localeOptions = [
-  { value: 'sv-SE', label: 'Swedish (Sweden)' },
-  { value: 'en-IE', label: 'English (Ireland)' },
   { value: 'en-US', label: 'English (United States)' },
+  { value: 'en-IE', label: 'English (Ireland)' },
+  { value: 'sv-SE', label: 'Swedish (Sweden)' },
   { value: 'hr-HR', label: 'Croatian (Croatia)' },
 ]
 
 const uiStore = useUiStore()
 const projectionStore = useProjectionStore()
-const { currencyCode } = useCurrency()
-const { getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
+const collabStore = useCollaborationStore()
 
-const supportedCurrencyCodes = currencyOptions.map((o) => o.value)
-const currentRates = computed(() => getRatesFor(currencyCode.value, supportedCurrencyCodes))
-const currencyLabel = (code: string): string =>
-  currencyOptions.find((o) => o.value === code)?.label.split(' (')[0] ?? code
+// ── Local draft state ─────────────────────────────────────────────────────────
+const draftCurrency = ref(uiStore.currencyCode)
+const draftLocale = ref(uiStore.locale)
+const draftMonth = ref(uiStore.selectedMonth)
 
-const showResetConfirm = ref(false)
+// Keep draft in sync if another part of the app changes the store
+watch(() => uiStore.currencyCode, (v) => { draftCurrency.value = v })
+watch(() => uiStore.locale, (v) => { draftLocale.value = v })
+watch(() => uiStore.selectedMonth, (v) => { draftMonth.value = v })
 
-const selectedCurrencyCode = computed({
-  get: () => uiStore.currencyCode,
-  set: (val: string) => uiStore.setPreferences({ currencyCode: val, locale: uiStore.locale }),
-})
+const isDirty = computed(
+  () =>
+    draftCurrency.value !== uiStore.currencyCode
+    || draftLocale.value !== uiStore.locale
+    || draftMonth.value !== uiStore.selectedMonth,
+)
 
-const selectedLocale = computed({
-  get: () => uiStore.locale,
-  set: (val: string) => uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: val }),
-})
+const saveStatus = ref<'idle' | 'saved'>('idle')
+let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
 
-const selectedMonth = computed({
-  get: () => uiStore.selectedMonth,
-  set: (val: string) => uiStore.setSelectedMonth(val),
-})
-
-const resetAll = (): void => {
-  uiStore.clearAllData()
-  projectionStore.reset()
-  showResetConfirm.value = false
+const saveSettings = (): void => {
+  uiStore.setPreferences({ currencyCode: draftCurrency.value, locale: draftLocale.value })
+  uiStore.setSelectedMonth(draftMonth.value)
+  collabStore.broadcastProfileUpdate(draftCurrency.value, draftLocale.value, draftMonth.value)
+  clearTimeout(saveStatusTimer)
+  saveStatus.value = 'saved'
+  saveStatusTimer = setTimeout(() => { saveStatus.value = 'idle' }, 2500)
 }
 
-onMounted(() => { void fetchRates() })
+// ── Reset ─────────────────────────────────────────────────────────────────────
+const showResetConfirm = ref(false)
+const resetLoading = ref(false)
+
+const resetAll = async (): Promise<void> => {
+  resetLoading.value = true
+  try {
+    await Promise.all([uiStore.clearAllData(), projectionStore.reset()])
+  } finally {
+    resetLoading.value = false
+    showResetConfirm.value = false
+  }
+  // Sync drafts to the new defaults
+  draftCurrency.value = uiStore.currencyCode
+  draftLocale.value = uiStore.locale
+  draftMonth.value = uiStore.selectedMonth
+}
 </script>
 
 <template>
@@ -70,19 +84,19 @@ onMounted(() => { void fetchRates() })
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div>
           <label class="form-label" for="s-currency">Currency</label>
-          <select id="s-currency" v-model="selectedCurrencyCode" class="form-select">
+          <select id="s-currency" v-model="draftCurrency" class="form-select">
             <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
         <div>
           <label class="form-label" for="s-locale">Locale</label>
-          <select id="s-locale" v-model="selectedLocale" class="form-select">
+          <select id="s-locale" v-model="draftLocale" class="form-select">
             <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
         <div>
           <label class="form-label" for="s-month">Start month</label>
-          <input id="s-month" v-model="selectedMonth" class="form-select" type="month" />
+          <input id="s-month" v-model="draftMonth" class="form-select" type="month" />
         </div>
       </div>
 
@@ -105,21 +119,19 @@ onMounted(() => { void fetchRates() })
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- Exchange rates -->
-    <div class="card mb-6">
-      <p class="text-heading mb-1">Exchange rates</p>
-      <p class="text-body mb-4">Live reference rates from the European Central Bank.</p>
-      <ExchangeRatesPanel
-        :currency-code="currencyCode"
-        :rates="currentRates"
-        :rate-date="rateDate"
-        :loading="ratesLoading"
-        :error="ratesError"
-        :currency-label="currencyLabel"
-        layout="grid"
-      />
+      <div class="mt-5 flex items-center gap-3">
+        <button
+          class="btn btn-primary btn-sm"
+          :disabled="!isDirty"
+          @click="saveSettings"
+        >
+          <i class="pi pi-check text-xs" /> Save settings
+        </button>
+        <span v-if="saveStatus === 'saved'" class="text-xs" style="color: var(--app-positive)">
+          <i class="pi pi-check-circle" /> Saved
+        </span>
+      </div>
     </div>
 
     <!-- Data management -->
@@ -130,7 +142,7 @@ onMounted(() => { void fetchRates() })
       <div class="flex items-center justify-between rounded-lg border border-app px-4 py-3">
         <div>
           <p class="text-sm font-medium text-primary">Reset all data</p>
-          <p class="mt-0.5 text-xs text-secondary">Revert inputs and clear all saved scenarios.</p>
+          <p class="mt-0.5 text-xs text-secondary">Revert inputs to zero and clear all saved scenarios.</p>
         </div>
         <button class="btn btn-danger btn-sm" @click="showResetConfirm = true">Reset</button>
       </div>
@@ -140,9 +152,12 @@ onMounted(() => { void fetchRates() })
         class="mt-3 rounded-lg border p-4"
         style="border-color: var(--app-negative-border); background: var(--app-negative-soft);"
       >
-        <p class="text-sm font-medium text-negative">Are you sure? This will erase all saved scenarios and reset inputs to defaults.</p>
+        <p class="text-sm font-medium text-negative">Are you sure? This will erase all saved scenarios and reset inputs to zero.</p>
         <div class="mt-3 flex gap-2">
-          <button class="btn btn-danger btn-sm" @click="resetAll">Confirm reset</button>
+          <button class="btn btn-danger btn-sm" :disabled="resetLoading" @click="resetAll">
+            <i v-if="resetLoading" class="pi pi-spin pi-spinner text-xs" />
+            Confirm reset
+          </button>
           <button class="btn btn-secondary btn-sm" @click="showResetConfirm = false">Cancel</button>
         </div>
       </div>
