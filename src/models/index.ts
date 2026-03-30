@@ -55,6 +55,36 @@ export interface UiStateSnapshot {
   locale: string
 }
 
+// ─── Savings ──────────────────────────────────────────────────────────────────
+
+export type SavingsGoalStatus = 'active' | 'paused' | 'completed'
+
+export interface SavingsGoal {
+  id: string
+  userId: string
+  name: string
+  emoji: string
+  targetAmount: number
+  currentAmount: number        // maintained by DB trigger on deposits
+  monthlyContribution: number  // included in projections as expense
+  targetDate: string | null    // ISO date YYYY-MM-DD
+  status: SavingsGoalStatus
+  note: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SavingsDeposit {
+  id: string
+  goalId: string
+  userId: string   // actor (owner or editor collaborator)
+  amount: number   // positive = deposit, negative = withdrawal
+  note: string | null
+  depositDate: string  // ISO date YYYY-MM-DD
+  createdAt: string
+}
+
 // ─── Collaboration ────────────────────────────────────────────────────────────
 
 export type CollaborationRole = 'viewer' | 'editor'

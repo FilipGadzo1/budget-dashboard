@@ -5,16 +5,18 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
+import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 
 const { user, loading, initialize: initAuth } = useAuth()
 const uiStore = useUiStore()
 const projectionStore = useProjectionStore()
+const savingsStore = useSavingsStore()
 const collabStore = useCollaborationStore()
 const router = useRouter()
 
 const hydrateStores = async (): Promise<void> => {
-  await Promise.all([uiStore.hydrate(), projectionStore.hydrate()])
+  await Promise.all([uiStore.hydrate(), projectionStore.hydrate(), savingsStore.hydrate()])
   // Load collaboration data after core stores are ready
   void collabStore.hydrate()
 }
@@ -27,6 +29,7 @@ watch(user, (u, prev) => {
     // Logout — clear store state immediately
     uiStore.reset()
     projectionStore.resetStore()
+    savingsStore.resetStore()
     collabStore.reset()
     void router.push({ name: 'login' })
   }

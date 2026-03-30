@@ -5,6 +5,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useAuth } from '@/composables/useAuth'
 import { supabase } from '@/lib/supabase'
 import { useProjectionStore } from '@/stores/projection'
+import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 import { fetchProfile, fetchProjectionInputs } from '@/services/database'
 import type {
@@ -189,10 +190,12 @@ export const useCollaborationStore = defineStore('collaboration', () => {
       ...context,
       ownerSelectedMonth: ownerProfile?.selectedMonth ?? context.ownerSelectedMonth,
     }
-    // Reload projection store with the owner's data
+    // Reload projection + savings stores with the owner's data
     const projectionStore = useProjectionStore()
+    const savingsStore = useSavingsStore()
     projectionStore.resetStore()
-    await projectionStore.hydrate(context.ownerId)
+    savingsStore.resetStore()
+    await Promise.all([projectionStore.hydrate(context.ownerId), savingsStore.hydrate(context.ownerId)])
 
     // Switch Realtime subscription to the new budget
     startRealtime(context.ownerId)
@@ -216,8 +219,10 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   const exitContext = async (): Promise<void> => {
     activeBudgetContext.value = null
     const projectionStore = useProjectionStore()
+    const savingsStore = useSavingsStore()
     projectionStore.resetStore()
-    await projectionStore.hydrate()
+    savingsStore.resetStore()
+    await Promise.all([projectionStore.hydrate(), savingsStore.hydrate()])
 
     // Switch Realtime subscription back to own budget
     const userId = getUserId()
@@ -281,6 +286,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
     const user = getUser()
     const projectionStore = useProjectionStore()
+    const savingsStore = useSavingsStore()
 
     const channel = supabase.channel(`budget:${ownerId}`, {
       config: { presence: { key: user?.id ?? 'anon' } },
@@ -358,6 +364,38 @@ export const useCollaborationStore = defineStore('collaboration', () => {
         useUiStore().setSelectedMonth(p.selectedMonth)
       }
     })
+
+    // ── Savings goals ──
+    channel.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'savings_goals', filter: `user_id=eq.${ownerId}` },
+      (payload) => savingsStore.applyRemoteGoalUpsert(payload.new as Record<string, unknown>),
+    )
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'savings_goals', filter: `user_id=eq.${ownerId}` },
+      (payload) => savingsStore.applyRemoteGoalUpsert(payload.new as Record<string, unknown>),
+    )
+    channel.on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'savings_goals', filter: `user_id=eq.${ownerId}` },
+      (payload) => savingsStore.applyRemoteGoalDelete((payload.old as { id: string }).id),
+    )
+
+    // ── Savings deposits (no filter — deposits are owned by actor, not budget owner) ──
+    channel.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'savings_deposits' },
+      (payload) => savingsStore.applyRemoteDepositInsert(payload.new as Record<string, unknown>),
+    )
+    channel.on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'savings_deposits' },
+      (payload) => {
+        const row = payload.old as { id: string; goal_id: string }
+        savingsStore.applyRemoteDepositDelete(row.id, row.goal_id)
+      },
+    )
 
     // ── Collaborations — update collaborators list when someone accepts/declines/role changes ──
     channel.on(

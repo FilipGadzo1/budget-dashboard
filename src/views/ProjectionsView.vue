@@ -12,7 +12,7 @@ import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
-import type { ExpenseItem, MonthAdjustment } from '@/models'
+import type { ExpenseItem, MonthAdjustment, ProjectionInputs } from '@/models'
 import {
   buildProjectionRows,
   buildProjectionShareSummary,
@@ -21,6 +21,7 @@ import {
 } from '@/services/projectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
+import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 import { buildErrorMap, projectionSchema } from '@/validation/forms'
 
@@ -47,9 +48,29 @@ const currencyLabel = (code: string): string =>
   currencyOptions.find((o) => o.value === code)?.label.split(' (')[0] ?? code
 
 const projectionStore = useProjectionStore()
+const savingsStore = useSavingsStore()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { currencyCode, formatCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
+
+// Effective inputs include monthly savings contributions as an additional expense.
+// When expense items are active, buildProjectionRows ignores monthlyExpenses and uses
+// expenseItems sum instead — so we inject savings as a synthetic item in that case.
+const effectiveInputs = computed((): ProjectionInputs => {
+  const savings = savingsStore.totalMonthlyContributions
+  if (savings === 0) return projectionStore.inputs
+  const base = projectionStore.inputs
+  if (base.expenseItems.length > 0) {
+    return {
+      ...base,
+      expenseItems: [
+        ...base.expenseItems,
+        { id: '__savings__', name: 'Savings contributions', amount: savings, sortOrder: 9999 },
+      ],
+    }
+  }
+  return { ...base, monthlyExpenses: base.monthlyExpenses + savings }
+})
 
 const form = reactive({
   monthlyIncome: projectionStore.inputs.monthlyIncome,
@@ -118,6 +139,7 @@ const selectedCurrencyCode = computed({
       monthlyExpenses: convertedExpenses,
       months: form.months,
       expenseItems: projectionStore.inputs.expenseItems,
+      monthlyAdjustments: projectionStore.inputs.monthlyAdjustments,
     })
     projectionStore.setExpenseItems(convertedItems)
     uiStore.setPreferences({ currencyCode: nextCurrencyCode, locale: uiStore.locale })
@@ -155,14 +177,18 @@ const syncProjection = async (): Promise<void> => {
   clearErrors()
   try {
     const validated = await projectionSchema.validate(form, { abortEarly: false, stripUnknown: true })
-    projectionStore.setInputs({ ...validated, expenseItems: projectionStore.inputs.expenseItems })
+    projectionStore.setInputs({
+      ...validated,
+      expenseItems: projectionStore.inputs.expenseItems,
+      monthlyAdjustments: projectionStore.inputs.monthlyAdjustments,
+    })
   } catch (error) {
     Object.assign(formErrors, buildErrorMap(error))
   }
 }
 
 const projectionRows = computed(() =>
-  buildProjectionRows(projectionStore.inputs, selectedMonth.value, locale.value),
+  buildProjectionRows(effectiveInputs.value, selectedMonth.value, locale.value),
 )
 const projectionSummary = computed(() => buildProjectionSummary(projectionRows.value))
 const projectionMilestones = computed(() => buildProjectionMilestones(projectionRows.value))
@@ -322,6 +348,10 @@ const downloadShareSummary = (): void => {
             Calculated from {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
           </p>
           <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
+          <p v-if="savingsStore.totalMonthlyContributions > 0" class="mt-1 text-xs" style="color: var(--app-accent);">
+            <i class="pi pi-wallet" style="font-size: 0.6rem;" />
+            +{{ formatCurrency(savingsStore.totalMonthlyContributions) }}/mo in savings contributions
+          </p>
         </div>
         <div>
           <label class="form-label" for="months">Months to project</label>
