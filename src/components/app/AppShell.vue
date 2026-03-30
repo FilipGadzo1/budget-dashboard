@@ -15,6 +15,7 @@ const sidebarOpen = ref(false)
 const navItems = [
   { path: '/', icon: 'pi pi-objects-column', label: 'Dashboard' },
   { path: '/projections', icon: 'pi pi-calculator', label: 'Projections' },
+  { path: '/savings', icon: 'pi pi-wallet', label: 'Savings' },
   { path: '/scenarios', icon: 'pi pi-bookmark', label: 'Scenarios' },
   { path: '/collaboration', icon: 'pi pi-users', label: 'Collab' },
   { path: '/settings', icon: 'pi pi-cog', label: 'Settings' },

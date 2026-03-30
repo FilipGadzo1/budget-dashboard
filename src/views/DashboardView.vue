@@ -12,28 +12,50 @@ import {
   buildProjectionTrendPath,
   calculateBreakEvenGap,
 } from '@/services/projectionService'
+import type { ProjectionInputs } from '@/models'
 import { useProjectionStore } from '@/stores/projection'
+import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 
 const router = useRouter()
 const projectionStore = useProjectionStore()
+const savingsStore = useSavingsStore()
 const uiStore = useUiStore()
 const { formatCurrency, formatCompactCurrency, locale, selectedMonth } = useCurrency()
 
+// Effective inputs include monthly savings contributions as an additional expense.
+// When expense items are active, buildProjectionRows ignores monthlyExpenses and uses
+// expenseItems sum instead — so we inject savings as a synthetic item in that case.
+const effectiveInputs = computed((): ProjectionInputs => {
+  const savings = savingsStore.totalMonthlyContributions
+  if (savings === 0) return projectionStore.inputs
+  const base = projectionStore.inputs
+  if (base.expenseItems.length > 0) {
+    return {
+      ...base,
+      expenseItems: [
+        ...base.expenseItems,
+        { id: '__savings__', name: 'Savings contributions', amount: savings, sortOrder: 9999 },
+      ],
+    }
+  }
+  return { ...base, monthlyExpenses: base.monthlyExpenses + savings }
+})
+
 const projectionRows = computed(() =>
-  buildProjectionRows(projectionStore.inputs, selectedMonth.value, locale.value),
+  buildProjectionRows(effectiveInputs.value, selectedMonth.value, locale.value),
 )
 const summary = computed(() => buildProjectionSummary(projectionRows.value))
 const milestones = computed(() => buildProjectionMilestones(projectionRows.value))
-const monthlyNet = computed(() => projectionStore.inputs.monthlyIncome - projectionStore.inputs.monthlyExpenses)
-const breakEvenGap = computed(() => calculateBreakEvenGap(projectionStore.inputs))
+const monthlyNet = computed(() => effectiveInputs.value.monthlyIncome - effectiveInputs.value.monthlyExpenses)
+const breakEvenGap = computed(() => calculateBreakEvenGap(effectiveInputs.value))
 const trendPath = computed(() => buildProjectionTrendPath(projectionRows.value, 400, 140))
 const trendFillPath = computed(() =>
   trendPath.value ? `${trendPath.value} L 390 140 L 10 140 Z` : '',
 )
 
 const statusPill = computed(() => {
-  const noData = projectionStore.inputs.monthlyIncome === 0 && projectionStore.inputs.monthlyExpenses === 0
+  const noData = projectionStore.inputs.monthlyIncome === 0 && effectiveInputs.value.monthlyExpenses === 0
   if (noData) return { label: 'No data', tone: '' }
   if (monthlyNet.value < 0) return { label: 'Deficit', tone: 'status-pill-negative' }
   if (summary.value.endingBalance >= 10000) return { label: 'Strong', tone: 'status-pill-positive' }
@@ -49,7 +71,7 @@ const kpis = computed(() => [
 
 const insights = computed(() => {
   const list: Array<{ title: string; body: string; tone: 'positive' | 'warning' }> = []
-  const noData = projectionStore.inputs.monthlyIncome === 0 && projectionStore.inputs.monthlyExpenses === 0
+  const noData = projectionStore.inputs.monthlyIncome === 0 && effectiveInputs.value.monthlyExpenses === 0
   if (noData) {
     list.push({
       title: 'No data yet',

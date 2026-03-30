@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { ExpenseItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, UiStateSnapshot } from '@/models'
+import type { ExpenseItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, SavingsDeposit, SavingsGoal, UiStateSnapshot } from '@/models'
 
 type ScenarioUpdates = Partial<{
   name: string
@@ -237,4 +237,123 @@ export async function setActiveScenario(userId: string, scenarioId: string | nul
       .eq('id', scenarioId)
     if (error) console.warn('[db] setActiveScenario activate error:', error.message)
   }
+}
+
+// --- Savings Goals ---
+
+export async function fetchSavingsGoals(userId: string): Promise<SavingsGoal[]> {
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .select('id, user_id, name, emoji, target_amount, current_amount, monthly_contribution, target_date, status, note, sort_order, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+
+  if (error) {
+    console.warn('[db] fetchSavingsGoals error:', error.message)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    emoji: row.emoji,
+    targetAmount: Number(row.target_amount),
+    currentAmount: Number(row.current_amount),
+    monthlyContribution: Number(row.monthly_contribution),
+    targetDate: row.target_date ?? null,
+    status: row.status as SavingsGoal['status'],
+    note: row.note ?? null,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }))
+}
+
+export async function insertSavingsGoal(userId: string, goal: SavingsGoal): Promise<void> {
+  const { error } = await supabase.from('savings_goals').insert({
+    id: goal.id,
+    user_id: userId,
+    name: goal.name,
+    emoji: goal.emoji,
+    target_amount: goal.targetAmount,
+    current_amount: goal.currentAmount,
+    monthly_contribution: goal.monthlyContribution,
+    target_date: goal.targetDate ?? null,
+    status: goal.status,
+    note: goal.note ?? null,
+    sort_order: goal.sortOrder,
+  })
+
+  if (error) console.warn('[db] insertSavingsGoal error:', error.message)
+}
+
+export async function updateSavingsGoal(
+  goalId: string,
+  updates: Partial<{
+    name: string
+    emoji: string
+    target_amount: number
+    monthly_contribution: number
+    target_date: string | null
+    status: string
+    note: string | null
+    sort_order: number
+    updated_at: string
+  }>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('savings_goals')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', goalId)
+
+  if (error) console.warn('[db] updateSavingsGoal error:', error.message)
+}
+
+export async function deleteSavingsGoal(goalId: string): Promise<void> {
+  const { error } = await supabase.from('savings_goals').delete().eq('id', goalId)
+  if (error) console.warn('[db] deleteSavingsGoal error:', error.message)
+}
+
+// --- Savings Deposits ---
+
+export async function fetchDepositsForGoal(goalId: string): Promise<SavingsDeposit[]> {
+  const { data, error } = await supabase
+    .from('savings_deposits')
+    .select('id, goal_id, user_id, amount, note, deposit_date, created_at')
+    .eq('goal_id', goalId)
+    .order('deposit_date', { ascending: false })
+
+  if (error) {
+    console.warn('[db] fetchDepositsForGoal error:', error.message)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    goalId: row.goal_id,
+    userId: row.user_id,
+    amount: Number(row.amount),
+    note: row.note ?? null,
+    depositDate: row.deposit_date,
+    createdAt: row.created_at,
+  }))
+}
+
+export async function insertSavingsDeposit(deposit: SavingsDeposit): Promise<void> {
+  const { error } = await supabase.from('savings_deposits').insert({
+    id: deposit.id,
+    goal_id: deposit.goalId,
+    user_id: deposit.userId,
+    amount: deposit.amount,
+    note: deposit.note ?? null,
+    deposit_date: deposit.depositDate,
+  })
+
+  if (error) console.warn('[db] insertSavingsDeposit error:', error.message)
+}
+
+export async function deleteSavingsDeposit(depositId: string): Promise<void> {
+  const { error } = await supabase.from('savings_deposits').delete().eq('id', depositId)
+  if (error) console.warn('[db] deleteSavingsDeposit error:', error.message)
 }
