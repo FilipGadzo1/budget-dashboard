@@ -12,6 +12,7 @@ import type {
   BudgetContext,
   Collaboration,
   CollaborationRole,
+  MonthAdjustment,
   OnlineUser,
   SharedBudget,
 } from '@/models'
@@ -291,10 +292,20 @@ export const useCollaborationStore = defineStore('collaboration', () => {
       { event: 'UPDATE', schema: 'public', table: 'projection_inputs', filter: `user_id=eq.${ownerId}` },
       (payload) => {
         const row = payload.new as Record<string, unknown>
-        projectionStore.applyRemoteInputs(
+        const rawAdj = Array.isArray(row.monthly_adjustments) ? (row.monthly_adjustments as unknown[]) : []
+        const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
+          id: a.id ?? crypto.randomUUID(),
+          monthKey: a.monthKey ?? '',
+          incomeAdjustment: Number(a.incomeAdjustment ?? 0),
+          expenseAdjustment: Number(a.expenseAdjustment ?? 0),
+          note: a.note ?? undefined,
+        }))
+        projectionStore.applyRemoteFullInputs(
           Number(row.monthly_income),
           Number(row.monthly_expenses),
           row.months as number,
+          projectionStore.inputs.expenseItems,
+          monthlyAdjustments,
         )
       },
     )
@@ -401,6 +412,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
               monthly_expenses: inputs.monthlyExpenses,
               months: inputs.months,
               expense_items: inputs.expenseItems,
+              monthly_adjustments: inputs.monthlyAdjustments,
             },
           })
         }, 300)
@@ -415,6 +427,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
         Number(p.monthly_expenses),
         p.months as number,
         Array.isArray(p.expense_items) ? (p.expense_items as import('@/models').ExpenseItem[]) : [],
+        Array.isArray(p.monthly_adjustments) ? (p.monthly_adjustments as MonthAdjustment[]) : [],
       )
     })
 

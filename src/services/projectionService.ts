@@ -16,23 +16,31 @@ export const buildProjectionRows = (
   locale: string,
 ): ProjectionRow[] => {
   const startDate = monthKeyToDate(startMonth)
-  const expenses = inputs.expenseItems?.length
+  const baseExpenses = inputs.expenseItems?.length
     ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
     : inputs.monthlyExpenses
-  const net = inputs.monthlyIncome - expenses
+  const adjustments = inputs.monthlyAdjustments ?? []
   let runningBalance = 0
 
   return Array.from({ length: inputs.months }, (_, index) => {
     const currentDate = addMonths(startDate, index)
-    runningBalance += net
+    const monthKey = toMonthKey(currentDate)
+    const adj = adjustments.find((a) => a.monthKey === monthKey)
+    const rowIncome = inputs.monthlyIncome + (adj?.incomeAdjustment ?? 0)
+    const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0)
+    const rowNet = rowIncome - rowExpenses
+    runningBalance += rowNet
 
     return {
-      monthKey: toMonthKey(currentDate),
-      monthLabel: formatDisplayMonth(toMonthKey(currentDate), locale),
-      income: inputs.monthlyIncome,
-      expenses,
-      net,
+      monthKey,
+      monthLabel: formatDisplayMonth(monthKey, locale),
+      income: rowIncome,
+      expenses: rowExpenses,
+      net: rowNet,
       cumulativeBalance: runningBalance,
+      incomeAdjustment: adj?.incomeAdjustment ?? 0,
+      expenseAdjustment: adj?.expenseAdjustment ?? 0,
+      adjustmentNote: adj?.note,
     }
   })
 }

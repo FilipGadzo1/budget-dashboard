@@ -48,6 +48,7 @@ describe('projection store', () => {
       monthlyExpenses: 3500,
       months: 18,
       expenseItems: [],
+      monthlyAdjustments: [],
     })
 
     projectionStore.deleteScenario(scenario.id)
@@ -100,6 +101,7 @@ describe('projection store', () => {
       monthlyExpenses: 2800,
       months: 18,
       expenseItems: [],
+      monthlyAdjustments: [],
     })
 
     expect(projectionStore.renameScenario(scenario.id, 'Travel year')).toBe(true)

@@ -7,11 +7,20 @@ export interface ExpenseItem {
   sortOrder: number
 }
 
+export interface MonthAdjustment {
+  id: string
+  monthKey: string
+  incomeAdjustment: number
+  expenseAdjustment: number
+  note?: string
+}
+
 export interface ProjectionInputs {
   monthlyIncome: number
   monthlyExpenses: number
   months: number
   expenseItems: ExpenseItem[]
+  monthlyAdjustments: MonthAdjustment[]
 }
 
 export interface ProjectionScenario {
@@ -34,6 +43,9 @@ export interface ProjectionRow {
   expenses: number
   net: number
   cumulativeBalance: number
+  incomeAdjustment: number
+  expenseAdjustment: number
+  adjustmentNote?: string
 }
 
 export interface UiStateSnapshot {
