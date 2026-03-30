@@ -1,11 +1,23 @@
 import { computed } from 'vue'
 
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useUiStore } from '@/stores/ui'
 
 export const useCurrency = () => {
   const uiStore = useUiStore()
-  const currencyCode = computed(() => uiStore.currencyCode)
-  const locale = computed(() => uiStore.locale)
+  const collabStore = useCollaborationStore()
+
+  // When viewing someone else's budget, use their currency/locale/month so the
+  // projection is shown exactly as the owner configured it.
+  const currencyCode = computed(
+    () => collabStore.activeBudgetContext?.ownerCurrencyCode ?? uiStore.currencyCode,
+  )
+  const locale = computed(
+    () => collabStore.activeBudgetContext?.ownerLocale ?? uiStore.locale,
+  )
+  const selectedMonth = computed(
+    () => collabStore.activeBudgetContext?.ownerSelectedMonth ?? uiStore.selectedMonth,
+  )
 
   const formatCurrency = (value: number): string =>
     new Intl.NumberFormat(locale.value, {
@@ -25,6 +37,7 @@ export const useCurrency = () => {
   return {
     currencyCode,
     locale,
+    selectedMonth,
     formatCurrency,
     formatCompactCurrency,
   }

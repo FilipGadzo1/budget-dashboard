@@ -40,7 +40,6 @@ const currencySymbol = computed(() => {
       :input-id="inputId"
       mode="decimal"
       :min="0"
-      :max="1_000_000_000"
       :min-fraction-digits="0"
       :max-fraction-digits="2"
       :use-grouping="true"

@@ -5,6 +5,7 @@ defineProps<{
   scenario: ProjectionScenario
   isActive: boolean
   formatCurrency: (n: number) => string
+  readonly?: boolean
 }>()
 
 defineEmits<{
@@ -32,8 +33,8 @@ defineEmits<{
     </div>
     <div class="flex gap-1.5 sm:flex-shrink-0">
       <button class="btn btn-primary btn-sm flex-1 sm:flex-none" @click="$emit('load')">Load</button>
-      <button class="btn btn-secondary btn-sm flex-1 sm:flex-none" @click="$emit('rename')">Rename</button>
-      <button class="btn btn-danger btn-sm flex-1 sm:flex-none" @click="$emit('delete')">Delete</button>
+      <button v-if="!readonly" class="btn btn-secondary btn-sm flex-1 sm:flex-none" @click="$emit('rename')">Rename</button>
+      <button v-if="!readonly" class="btn btn-danger btn-sm flex-1 sm:flex-none" @click="$emit('delete')">Delete</button>
     </div>
   </article>
 </template>

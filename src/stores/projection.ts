@@ -1,10 +1,11 @@
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
 import { mockProjectionInputs } from '@/data/mockData'
 import type { ExpenseItem, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
 import {
+  deleteAllScenarios,
   deleteScenario as dbDeleteScenario,
   fetchProjectionInputs,
   fetchScenarios,
@@ -58,27 +59,35 @@ const defaultSnapshot = (): ProjectionStateSnapshot => ({
 export const useProjectionStore = defineStore('projection', () => {
   const snapshot = ref<ProjectionStateSnapshot>(defaultSnapshot())
   const isReady = ref(false)
+  // Overrides own user ID when viewing a shared budget (set by collaboration store)
+  const targetUserId = ref<string | null>(null)
+  // Prevents the save watcher from re-persisting changes that arrived via Realtime
+  const isReceivingRemoteUpdate = ref(false)
 
   const getUserId = (): string | null => {
     const { user } = useAuth()
     return user.value?.id ?? null
   }
 
+  const getEffectiveUserId = (): string | null => targetUserId.value ?? getUserId()
+
   const debouncedSaveInputs = (): void => {
     clearTimeout(inputsSaveTimer)
     inputsSaveTimer = setTimeout(() => {
-      const userId = getUserId()
+      const userId = getEffectiveUserId()
       if (userId) void saveProjectionInputs(userId, snapshot.value.inputs)
     }, 500)
   }
 
   watch(() => snapshot.value.inputs, () => {
-    if (isReady.value) debouncedSaveInputs()
+    if (isReady.value && !isReceivingRemoteUpdate.value) debouncedSaveInputs()
   }, { deep: true })
 
-  const hydrate = async (): Promise<void> => {
-    const userId = getUserId()
+  const hydrate = async (overrideUserId?: string): Promise<void> => {
+    const userId = overrideUserId ?? getUserId()
     if (!userId) return
+
+    targetUserId.value = overrideUserId ?? null
 
     const [inputs, scenarioData] = await Promise.all([
       fetchProjectionInputs(userId),
@@ -97,6 +106,7 @@ export const useProjectionStore = defineStore('projection', () => {
     clearTimeout(inputsSaveTimer)
     clearTimeout(expenseItemsSaveTimer)
     isReady.value = false
+    targetUserId.value = null
     snapshot.value = defaultSnapshot()
   }
 
@@ -114,16 +124,28 @@ export const useProjectionStore = defineStore('projection', () => {
 
     clearTimeout(expenseItemsSaveTimer)
     expenseItemsSaveTimer = setTimeout(() => {
-      const userId = getUserId()
+      const userId = getEffectiveUserId()
       if (userId && isReady.value) void syncExpenseItems(userId, snapshot.value.inputs.expenseItems)
     }, 500)
   }
 
-  const reset = (): void => {
+  const reset = async (): Promise<void> => {
+    clearTimeout(inputsSaveTimer)
+    clearTimeout(expenseItemsSaveTimer)
+    const userId = getEffectiveUserId()
+    const zeroInputs: ProjectionInputs = { ...mockProjectionInputs, expenseItems: [] }
     snapshot.value = {
       ...snapshot.value,
-      inputs: { ...mockProjectionInputs },
+      inputs: zeroInputs,
+      savedScenarios: [],
       activeScenarioId: null,
+    }
+    if (userId) {
+      await Promise.all([
+        saveProjectionInputs(userId, zeroInputs),
+        syncExpenseItems(userId, []),
+        deleteAllScenarios(userId),
+      ])
     }
   }
 
@@ -141,7 +163,7 @@ export const useProjectionStore = defineStore('projection', () => {
       activeScenarioId: scenario.id,
     }
 
-    const userId = getUserId()
+    const userId = getEffectiveUserId()
     if (userId) void insertScenario(userId, scenario, true)
 
     return scenario
@@ -157,7 +179,7 @@ export const useProjectionStore = defineStore('projection', () => {
       activeScenarioId: scenario.id,
     }
 
-    const userId = getUserId()
+    const userId = getEffectiveUserId()
     if (userId) void setActiveScenario(userId, scenario.id)
   }
 
@@ -268,7 +290,7 @@ export const useProjectionStore = defineStore('projection', () => {
       savedScenarios: [...imported, ...snapshot.value.savedScenarios],
     }
 
-    const userId = getUserId()
+    const userId = getEffectiveUserId()
     if (userId) {
       imported.forEach((s) => void insertScenario(userId, s, false))
     }
@@ -276,11 +298,99 @@ export const useProjectionStore = defineStore('projection', () => {
     return imported.length
   }
 
+  // ─── Remote update helpers (called by Realtime subscription) ─────────────────
+  // These bypass the save watcher so received changes are not echoed back to DB.
+
+  const withRemoteFlag = (fn: () => void): void => {
+    isReceivingRemoteUpdate.value = true
+    fn()
+    // nextTick ensures the watcher (pre-flush) runs while the flag is still true,
+    // then the flag is reset after the flush queue clears.
+    void nextTick(() => { isReceivingRemoteUpdate.value = false })
+  }
+
+  const applyRemoteInputs = (income: number, expenses: number, months: number): void => {
+    withRemoteFlag(() => {
+      snapshot.value = {
+        ...snapshot.value,
+        inputs: { ...snapshot.value.inputs, monthlyIncome: income, monthlyExpenses: expenses, months },
+      }
+    })
+  }
+
+  // Applies a full inputs update (including expense items) in a single remote flag cycle.
+  // Used by the broadcast listener to avoid separate withRemoteFlag calls that could
+  // briefly clear the flag between two reactive updates.
+  const applyRemoteFullInputs = (income: number, expenses: number, months: number, expenseItems: ExpenseItem[]): void => {
+    withRemoteFlag(() => {
+      snapshot.value = {
+        ...snapshot.value,
+        inputs: { monthlyIncome: income, monthlyExpenses: expenses, months, expenseItems },
+      }
+    })
+  }
+
+  const applyRemoteScenarioUpsert = (row: Record<string, unknown>): void => {
+    const rawItems = Array.isArray(row.expense_items) ? (row.expense_items as unknown[]) : []
+    const expenseItems: ExpenseItem[] = rawItems.map((i: any) => ({
+      id: i.id ?? crypto.randomUUID(),
+      name: i.name ?? '',
+      amount: Number(i.amount ?? 0),
+      sortOrder: i.sort_order ?? i.sortOrder ?? 0,
+    }))
+    const scenario: ProjectionScenario = {
+      id: row.id as string,
+      name: row.name as string,
+      inputs: {
+        monthlyIncome: Number(row.monthly_income),
+        monthlyExpenses: Number(row.monthly_expenses),
+        months: row.months as number,
+        expenseItems,
+      },
+      updatedAt: row.updated_at as string,
+    }
+
+    withRemoteFlag(() => {
+      const exists = snapshot.value.savedScenarios.some((s) => s.id === scenario.id)
+      snapshot.value = {
+        ...snapshot.value,
+        savedScenarios: exists
+          ? snapshot.value.savedScenarios.map((s) => (s.id === scenario.id ? scenario : s))
+          : [scenario, ...snapshot.value.savedScenarios],
+        activeScenarioId: row.is_active
+          ? scenario.id
+          : snapshot.value.activeScenarioId === scenario.id
+            ? null
+            : snapshot.value.activeScenarioId,
+      }
+    })
+  }
+
+  const applyRemoteScenarioDelete = (scenarioId: string): void => {
+    withRemoteFlag(() => {
+      snapshot.value = {
+        ...snapshot.value,
+        savedScenarios: snapshot.value.savedScenarios.filter((s) => s.id !== scenarioId),
+        activeScenarioId: snapshot.value.activeScenarioId === scenarioId ? null : snapshot.value.activeScenarioId,
+      }
+    })
+  }
+
+  const applyRemoteExpenseItems = (items: ExpenseItem[]): void => {
+    withRemoteFlag(() => {
+      snapshot.value = {
+        ...snapshot.value,
+        inputs: { ...snapshot.value.inputs, expenseItems: items },
+      }
+    })
+  }
+
   return {
     inputs: computed(() => snapshot.value.inputs),
     savedScenarios: computed(() => snapshot.value.savedScenarios),
     activeScenarioId: computed(() => snapshot.value.activeScenarioId),
     isReady,
+    isReceivingRemoteUpdate,
     hydrate,
     resetStore,
     setInputs,
@@ -293,5 +403,10 @@ export const useProjectionStore = defineStore('projection', () => {
     deleteScenario,
     exportScenarios,
     importScenarios,
+    applyRemoteInputs,
+    applyRemoteFullInputs,
+    applyRemoteScenarioUpsert,
+    applyRemoteScenarioDelete,
+    applyRemoteExpenseItems,
   }
 })

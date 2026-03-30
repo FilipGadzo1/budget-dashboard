@@ -18,10 +18,10 @@ import { useUiStore } from '@/stores/ui'
 const router = useRouter()
 const projectionStore = useProjectionStore()
 const uiStore = useUiStore()
-const { formatCurrency, formatCompactCurrency, locale } = useCurrency()
+const { formatCurrency, formatCompactCurrency, locale, selectedMonth } = useCurrency()
 
 const projectionRows = computed(() =>
-  buildProjectionRows(projectionStore.inputs, uiStore.selectedMonth, locale.value),
+  buildProjectionRows(projectionStore.inputs, selectedMonth.value, locale.value),
 )
 const summary = computed(() => buildProjectionSummary(projectionRows.value))
 const milestones = computed(() => buildProjectionMilestones(projectionRows.value))
@@ -33,6 +33,8 @@ const trendFillPath = computed(() =>
 )
 
 const statusPill = computed(() => {
+  const noData = projectionStore.inputs.monthlyIncome === 0 && projectionStore.inputs.monthlyExpenses === 0
+  if (noData) return { label: 'No data', tone: '' }
   if (monthlyNet.value < 0) return { label: 'Deficit', tone: 'status-pill-negative' }
   if (summary.value.endingBalance >= 10000) return { label: 'Strong', tone: 'status-pill-positive' }
   return { label: 'On track', tone: 'status-pill-positive' }
@@ -47,7 +49,14 @@ const kpis = computed(() => [
 
 const insights = computed(() => {
   const list: Array<{ title: string; body: string; tone: 'positive' | 'warning' }> = []
-  if (monthlyNet.value < 0) {
+  const noData = projectionStore.inputs.monthlyIncome === 0 && projectionStore.inputs.monthlyExpenses === 0
+  if (noData) {
+    list.push({
+      title: 'No data yet',
+      body: 'Add your monthly income and expenses on the Projections page to see your financial forecast.',
+      tone: 'warning',
+    })
+  } else if (monthlyNet.value < 0) {
     list.push({
       title: 'Monthly deficit',
       body: `Expenses exceed income by ${formatCurrency(breakEvenGap.value)} per month. Consider reducing costs or increasing revenue.`,
