@@ -125,14 +125,16 @@ const removeItem = (index: number): void => {
             v-model="draft[index].name"
             placeholder="Expense name"
             class="min-w-0 flex-1"
+            fluid
           />
-          <CurrencyInput
-            v-model="draft[index].amount"
-            :currency="currency"
-            :locale="locale"
-            class="w-40 flex-shrink-0"
-          />
-          <button class="btn btn-ghost btn-icon flex-shrink-0 text-secondary hover:text-negative" @click="removeItem(index)">
+          <div class="w-36 shrink-0">
+            <CurrencyInput
+              v-model="draft[index].amount"
+              :currency="currency"
+              :locale="locale"
+            />
+          </div>
+          <button class="btn btn-ghost btn-icon shrink-0 text-secondary hover:text-negative" @click="removeItem(index)">
             <i class="pi pi-times text-xs" />
           </button>
         </div>

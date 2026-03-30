@@ -42,3 +42,74 @@ export interface UiStateSnapshot {
   currencyCode: string
   locale: string
 }
+
+// ─── Collaboration ────────────────────────────────────────────────────────────
+
+export type CollaborationRole = 'viewer' | 'editor'
+export type CollaborationStatus = 'pending' | 'accepted' | 'declined'
+
+export interface Collaboration {
+  id: string
+  ownerId: string
+  ownerEmail: string
+  ownerName: string
+  collaboratorEmail: string
+  collaboratorId: string | null
+  collaboratorName: string | null
+  role: CollaborationRole
+  status: CollaborationStatus
+  inviteToken: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SharedBudget {
+  collaborationId: string
+  ownerId: string
+  ownerEmail: string
+  ownerName: string
+  collaboratorEmail: string
+  role: CollaborationRole
+  status: CollaborationStatus
+  inviteToken: string
+  ownerCurrencyCode: string
+  ownerLocale: string
+}
+
+export interface ActivityEntry {
+  id: string
+  budgetOwnerId: string
+  actorId: string
+  actorEmail: string
+  actorName: string
+  action: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface BudgetContext {
+  ownerId: string
+  ownerName: string
+  ownerEmail: string
+  role: CollaborationRole
+  ownerCurrencyCode: string
+  ownerLocale: string
+  ownerSelectedMonth?: string
+}
+
+export interface InviteInfo {
+  id: string
+  ownerId: string
+  ownerEmail: string
+  ownerName: string
+  collaboratorEmail: string
+  role: CollaborationRole
+  status: CollaborationStatus
+}
+
+export interface OnlineUser {
+  userId: string
+  userName: string
+  userEmail: string
+  avatarUrl: string | null
+}

@@ -11,9 +11,11 @@ import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import type { ProjectionScenario } from '@/models'
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 
 const projectionStore = useProjectionStore()
+const collabStore = useCollaborationStore()
 const { formatCurrency } = useCurrency()
 
 const scenarioName = ref('')
@@ -30,7 +32,8 @@ const showDeleteDialog = ref(false)
 const deleteTargetId = ref<string | null>(null)
 
 const saveScenario = (): void => {
-  projectionStore.saveScenario(scenarioName.value)
+  const scenario = projectionStore.saveScenario(scenarioName.value)
+  void collabStore.logActivity('saved_scenario', { name: scenario.name })
   scenarioName.value = ''
 }
 
@@ -55,7 +58,11 @@ const openDelete = (id: string): void => {
 }
 
 const confirmDelete = (): void => {
-  if (deleteTargetId.value) projectionStore.deleteScenario(deleteTargetId.value)
+  if (deleteTargetId.value) {
+    const scenario = projectionStore.savedScenarios.find((s) => s.id === deleteTargetId.value)
+    projectionStore.deleteScenario(deleteTargetId.value)
+    void collabStore.logActivity('deleted_scenario', { name: scenario?.name ?? '' })
+  }
   deleteTargetId.value = null
 }
 
@@ -100,16 +107,20 @@ const importFile = async (event: Event): Promise<void> => {
 
     <!-- Toolbar -->
     <div class="card mb-6">
+      <div v-if="collabStore.isReadOnly" class="mb-3 flex items-center gap-2 text-sm" style="color: var(--app-warning)">
+        <i class="pi pi-eye text-xs" />
+        <span>You have view-only access. Load and export scenarios, but cannot save or modify.</span>
+      </div>
       <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div class="flex-1">
           <label class="form-label" for="scenario-name">Scenario name</label>
-          <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" />
+          <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" :disabled="collabStore.isReadOnly" />
         </div>
         <div class="flex gap-2 sm:flex-shrink-0">
-          <button class="btn btn-primary flex-1 sm:flex-none" @click="saveScenario">
+          <button class="btn btn-primary flex-1 sm:flex-none" :disabled="collabStore.isReadOnly" @click="saveScenario">
             <i class="pi pi-save text-sm" /> Save current
           </button>
-          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary flex-1 sm:flex-none" @click="overwriteActive">
+          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary flex-1 sm:flex-none" :disabled="collabStore.isReadOnly" @click="overwriteActive">
             Overwrite active
           </button>
         </div>
@@ -121,9 +132,9 @@ const importFile = async (event: Event): Promise<void> => {
       <button class="btn btn-secondary btn-sm" @click="exportFile">
         <i class="pi pi-upload text-xs" /> Export all
       </button>
-      <label class="btn btn-secondary btn-sm import-label">
+      <label class="btn btn-secondary btn-sm import-label" :class="{ 'btn-disabled': collabStore.isReadOnly }">
         <i class="pi pi-download text-xs" /> Import
-        <input class="import-input" type="file" accept="application/json" @change="importFile" />
+        <input class="import-input" type="file" accept="application/json" :disabled="collabStore.isReadOnly" @change="importFile" />
       </label>
       <StatusMessage :message="importState.message" :tone="importState.tone" />
     </div>
@@ -146,6 +157,7 @@ const importFile = async (event: Event): Promise<void> => {
         :scenario="scenario"
         :is-active="scenario.id === projectionStore.activeScenarioId"
         :format-currency="formatCurrency"
+        :readonly="collabStore.isReadOnly"
         @load="loadScenario(scenario.id)"
         @rename="openRename(scenario)"
         @delete="openDelete(scenario.id)"

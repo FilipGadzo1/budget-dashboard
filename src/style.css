@@ -633,6 +633,13 @@ button, input, select, textarea {
   border-radius: 6px;
 }
 
+.btn:disabled,
+.btn-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .btn-icon {
   width: 36px;
   height: 36px;
@@ -741,6 +748,10 @@ button, input, select, textarea {
 .p-dialog .p-dialog-content,
 .p-dialog .p-dialog-footer {
   background: transparent !important;
+}
+
+.p-dialog .p-dialog-content {
+  overflow: hidden !important;
 }
 
 .p-inputtext.app-input-invalid,

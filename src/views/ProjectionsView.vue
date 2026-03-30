@@ -19,6 +19,7 @@ import {
   buildProjectionSummary,
   buildProjectionMilestones,
 } from '@/services/projectionService'
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useUiStore } from '@/stores/ui'
 import { buildErrorMap, projectionSchema } from '@/validation/forms'
@@ -47,7 +48,8 @@ const currencyLabel = (code: string): string =>
 
 const projectionStore = useProjectionStore()
 const uiStore = useUiStore()
-const { currencyCode, formatCurrency, locale } = useCurrency()
+const collabStore = useCollaborationStore()
+const { currencyCode, formatCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
 
 const form = reactive({
   monthlyIncome: projectionStore.inputs.monthlyIncome,
@@ -90,28 +92,53 @@ const shareState = reactive({
 })
 
 const selectedCurrencyCode = computed({
-  get: () => uiStore.currencyCode,
+  get: () => currencyCode.value,
   set: (nextCurrencyCode: string) => {
+    if (collabStore.isViewingSharedBudget) return
     const prev = uiStore.currencyCode
-    form.monthlyIncome = convert(form.monthlyIncome, prev, nextCurrencyCode)
-    form.monthlyExpenses = convert(form.monthlyExpenses, prev, nextCurrencyCode)
+    const convertedIncome = Math.round(convert(form.monthlyIncome, prev, nextCurrencyCode) * 100) / 100
+    const convertedExpenses = Math.round(convert(form.monthlyExpenses, prev, nextCurrencyCode) * 100) / 100
+    form.monthlyIncome = convertedIncome
+    form.monthlyExpenses = convertedExpenses
     const convertedItems = projectionStore.inputs.expenseItems.map((item) => ({
       ...item,
       amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
     }))
+    // Update the store with converted income/expenses BEFORE setExpenseItems, so the
+    // deep watcher on projectionStore.inputs doesn't reset the form back to old values
+    // when expense items change triggers it.
+    projectionStore.setInputs({
+      monthlyIncome: convertedIncome,
+      monthlyExpenses: convertedExpenses,
+      months: form.months,
+      expenseItems: projectionStore.inputs.expenseItems,
+    })
     projectionStore.setExpenseItems(convertedItems)
     uiStore.setPreferences({ currencyCode: nextCurrencyCode, locale: uiStore.locale })
+    collabStore.broadcastProfileUpdate(nextCurrencyCode, uiStore.locale, uiStore.selectedMonth)
   },
 })
 
 const selectedLocale = computed({
-  get: () => uiStore.locale,
-  set: (val: string) => uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: val }),
+  get: () => locale.value,
+  set: (val: string) => {
+    if (collabStore.isViewingSharedBudget) return
+    uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: val })
+    collabStore.broadcastProfileUpdate(uiStore.currencyCode, val, uiStore.selectedMonth)
+  },
 })
 
 const selectedMonth = computed({
-  get: () => uiStore.selectedMonth,
-  set: (val: string) => uiStore.setSelectedMonth(val),
+  get: () => sharedSelectedMonth.value,
+  set: (val: string) => {
+    if (collabStore.isViewingSharedBudget) {
+      // Editor changing start month: update shared context and broadcast to all viewers
+      collabStore.updateSharedSelectedMonth(val)
+    } else {
+      uiStore.setSelectedMonth(val)
+      collabStore.broadcastProfileUpdate(uiStore.currencyCode, uiStore.locale, val)
+    }
+  },
 })
 
 const clearErrors = (): void => {
@@ -129,7 +156,7 @@ const syncProjection = async (): Promise<void> => {
 }
 
 const projectionRows = computed(() =>
-  buildProjectionRows(projectionStore.inputs, uiStore.selectedMonth, locale.value),
+  buildProjectionRows(projectionStore.inputs, selectedMonth.value, locale.value),
 )
 const projectionSummary = computed(() => buildProjectionSummary(projectionRows.value))
 const projectionMilestones = computed(() => buildProjectionMilestones(projectionRows.value))
@@ -147,6 +174,13 @@ const shareSummary = computed(() =>
     highestBalance: formatCurrency(projectionMilestones.value.highestBalance),
   }),
 )
+
+// Sync form when the store changes from an external source (scenario load, realtime)
+watch(() => projectionStore.inputs, (inputs) => {
+  if (form.monthlyIncome !== inputs.monthlyIncome) form.monthlyIncome = inputs.monthlyIncome
+  if (form.monthlyExpenses !== inputs.monthlyExpenses) form.monthlyExpenses = inputs.monthlyExpenses
+  if (form.months !== inputs.months) form.months = inputs.months
+}, { deep: true })
 
 watch(() => [form.monthlyIncome, form.monthlyExpenses, form.months], () => {
   void syncProjection()
@@ -195,12 +229,12 @@ const downloadShareSummary = (): void => {
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div>
           <label class="form-label" for="start-month">Start month</label>
-          <input id="start-month" v-model="selectedMonth" class="form-select" type="month" />
+          <input id="start-month" v-model="selectedMonth" class="form-select" type="month" :disabled="collabStore.isReadOnly" />
         </div>
         <div>
           <label class="form-label" for="currency-code">Currency</label>
           <div class="flex items-center gap-2">
-            <select id="currency-code" v-model="selectedCurrencyCode" class="form-select flex-1">
+            <select id="currency-code" v-model="selectedCurrencyCode" class="form-select flex-1" :disabled="collabStore.isViewingSharedBudget" :title="collabStore.isViewingSharedBudget ? 'Currency is set by the budget owner' : undefined">
               <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
             <button class="btn btn-ghost btn-icon" title="Exchange rates" @click="showExchangeDialog = true">
@@ -210,7 +244,7 @@ const downloadShareSummary = (): void => {
         </div>
         <div>
           <label class="form-label" for="locale-code">Locale</label>
-          <select id="locale-code" v-model="selectedLocale" class="form-select">
+          <select id="locale-code" v-model="selectedLocale" class="form-select" :disabled="collabStore.isViewingSharedBudget" :title="collabStore.isViewingSharedBudget ? 'Locale is set by the budget owner' : undefined">
             <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
@@ -220,15 +254,20 @@ const downloadShareSummary = (): void => {
     <!-- Inputs -->
     <div class="card mb-6">
       <div class="mb-4 flex items-center justify-between">
-        <p class="text-label">Monthly inputs</p>
+        <div class="flex items-center gap-2">
+          <p class="text-label">Monthly inputs</p>
+          <span v-if="collabStore.isReadOnly" class="status-pill status-pill-warning text-xs">
+            <i class="pi pi-eye text-xs" /> View only
+          </span>
+        </div>
         <div class="flex gap-2">
           <button v-if="hasExpenseItems" class="btn btn-secondary btn-sm" @click="openExpensesView">
             <i class="pi pi-list text-xs" /> View items
           </button>
-          <button v-if="hasExpenseItems" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
+          <button v-if="hasExpenseItems && !collabStore.isReadOnly" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
             <i class="pi pi-pencil text-xs" /> Edit items
           </button>
-          <button v-else class="btn btn-secondary btn-sm" @click="openExpensesEdit">
+          <button v-if="!hasExpenseItems && !collabStore.isReadOnly" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
             <i class="pi pi-plus text-xs" /> Add expense items
           </button>
         </div>
@@ -242,6 +281,7 @@ const downloadShareSummary = (): void => {
             :currency="currencyCode"
             :locale="locale"
             :invalid="!!formErrors.monthlyIncome"
+            :disabled="collabStore.isReadOnly"
           />
           <p v-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
         </div>
@@ -269,7 +309,7 @@ const downloadShareSummary = (): void => {
             v-model="displayedExpenses"
             :currency="currencyCode"
             :locale="locale"
-            :disabled="hasExpenseItems"
+            :disabled="hasExpenseItems || collabStore.isReadOnly"
             :invalid="!!formErrors.monthlyExpenses"
           />
           <p v-if="hasExpenseItems" class="mt-1 text-xs text-secondary">
@@ -288,6 +328,7 @@ const downloadShareSummary = (): void => {
             :max-fraction-digits="0"
             :use-grouping="false"
             :class="{ 'app-input-invalid': formErrors.months }"
+            :disabled="collabStore.isReadOnly"
             fluid
           />
           <p v-if="formErrors.months" class="form-error">{{ formErrors.months }}</p>
@@ -335,6 +376,7 @@ const downloadShareSummary = (): void => {
       v-model:visible="showExchangeDialog"
       modal
       dismissable-mask
+      close-on-escape
       :draggable="false"
       :style="{ width: 'min(92vw, 22rem)' }"
     >
