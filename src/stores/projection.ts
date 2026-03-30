@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
 import { mockProjectionInputs } from '@/data/mockData'
-import type { ExpenseItem, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
+import type { ExpenseItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
 import {
   deleteAllScenarios,
   deleteScenario as dbDeleteScenario,
@@ -49,6 +49,7 @@ const buildImportedScenarioName = (
 
 let inputsSaveTimer: ReturnType<typeof setTimeout> | undefined
 let expenseItemsSaveTimer: ReturnType<typeof setTimeout> | undefined
+let adjustmentsSaveTimer: ReturnType<typeof setTimeout> | undefined
 
 const defaultSnapshot = (): ProjectionStateSnapshot => ({
   inputs: { ...mockProjectionInputs },
@@ -105,6 +106,7 @@ export const useProjectionStore = defineStore('projection', () => {
   const resetStore = (): void => {
     clearTimeout(inputsSaveTimer)
     clearTimeout(expenseItemsSaveTimer)
+    clearTimeout(adjustmentsSaveTimer)
     isReady.value = false
     targetUserId.value = null
     snapshot.value = defaultSnapshot()
@@ -129,11 +131,25 @@ export const useProjectionStore = defineStore('projection', () => {
     }, 500)
   }
 
+  const setMonthlyAdjustments = (adjustments: MonthAdjustment[]): void => {
+    snapshot.value = {
+      ...snapshot.value,
+      inputs: { ...snapshot.value.inputs, monthlyAdjustments: adjustments },
+    }
+
+    clearTimeout(adjustmentsSaveTimer)
+    adjustmentsSaveTimer = setTimeout(() => {
+      const userId = getEffectiveUserId()
+      if (userId && isReady.value) void saveProjectionInputs(userId, snapshot.value.inputs)
+    }, 500)
+  }
+
   const reset = async (): Promise<void> => {
     clearTimeout(inputsSaveTimer)
     clearTimeout(expenseItemsSaveTimer)
+    clearTimeout(adjustmentsSaveTimer)
     const userId = getEffectiveUserId()
-    const zeroInputs: ProjectionInputs = { ...mockProjectionInputs, expenseItems: [] }
+    const zeroInputs: ProjectionInputs = { ...mockProjectionInputs, expenseItems: [], monthlyAdjustments: [] }
     snapshot.value = {
       ...snapshot.value,
       inputs: zeroInputs,
@@ -228,6 +244,7 @@ export const useProjectionStore = defineStore('projection', () => {
         monthly_expenses: snapshot.value.inputs.monthlyExpenses,
         months: snapshot.value.inputs.months,
         expense_items: JSON.stringify(snapshot.value.inputs.expenseItems ?? []),
+        monthly_adjustments: JSON.stringify(snapshot.value.inputs.monthlyAdjustments ?? []),
       })
     }
     return overwritten
@@ -276,6 +293,7 @@ export const useProjectionStore = defineStore('projection', () => {
     const forNameChecks = [...snapshot.value.savedScenarios]
 
     unique.forEach((s) => {
+      if (!Array.isArray(s.inputs.monthlyAdjustments)) s.inputs.monthlyAdjustments = []
       const name = buildImportedScenarioName(forNameChecks, s.name, s.inputs)
       if (!name) return
       const normalized = { ...s, name }
@@ -318,14 +336,14 @@ export const useProjectionStore = defineStore('projection', () => {
     })
   }
 
-  // Applies a full inputs update (including expense items) in a single remote flag cycle.
-  // Used by the broadcast listener to avoid separate withRemoteFlag calls that could
-  // briefly clear the flag between two reactive updates.
-  const applyRemoteFullInputs = (income: number, expenses: number, months: number, expenseItems: ExpenseItem[]): void => {
+  // Applies a full inputs update (including expense items and monthly adjustments) in a
+  // single remote flag cycle. Used by the broadcast listener to avoid separate
+  // withRemoteFlag calls that could briefly clear the flag between two reactive updates.
+  const applyRemoteFullInputs = (income: number, expenses: number, months: number, expenseItems: ExpenseItem[], monthlyAdjustments: MonthAdjustment[]): void => {
     withRemoteFlag(() => {
       snapshot.value = {
         ...snapshot.value,
-        inputs: { monthlyIncome: income, monthlyExpenses: expenses, months, expenseItems },
+        inputs: { monthlyIncome: income, monthlyExpenses: expenses, months, expenseItems, monthlyAdjustments },
       }
     })
   }
@@ -338,6 +356,14 @@ export const useProjectionStore = defineStore('projection', () => {
       amount: Number(i.amount ?? 0),
       sortOrder: i.sort_order ?? i.sortOrder ?? 0,
     }))
+    const rawAdj = Array.isArray(row.monthly_adjustments) ? (row.monthly_adjustments as unknown[]) : []
+    const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
+      id: a.id ?? crypto.randomUUID(),
+      monthKey: a.monthKey ?? '',
+      incomeAdjustment: Number(a.incomeAdjustment ?? 0),
+      expenseAdjustment: Number(a.expenseAdjustment ?? 0),
+      note: a.note ?? undefined,
+    }))
     const scenario: ProjectionScenario = {
       id: row.id as string,
       name: row.name as string,
@@ -346,6 +372,7 @@ export const useProjectionStore = defineStore('projection', () => {
         monthlyExpenses: Number(row.monthly_expenses),
         months: row.months as number,
         expenseItems,
+        monthlyAdjustments,
       },
       updatedAt: row.updated_at as string,
     }
@@ -395,6 +422,7 @@ export const useProjectionStore = defineStore('projection', () => {
     resetStore,
     setInputs,
     setExpenseItems,
+    setMonthlyAdjustments,
     reset,
     saveScenario,
     loadScenario,

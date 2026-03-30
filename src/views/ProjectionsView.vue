@@ -12,7 +12,7 @@ import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
-import type { ExpenseItem } from '@/models'
+import type { ExpenseItem, MonthAdjustment } from '@/models'
 import {
   buildProjectionRows,
   buildProjectionShareSummary,
@@ -84,6 +84,12 @@ const openExpensesEdit = (): void => {
 
 const onExpenseItemsUpdate = (items: ExpenseItem[]): void => {
   projectionStore.setExpenseItems(items)
+}
+
+const monthlyAdjustments = computed(() => projectionStore.inputs.monthlyAdjustments)
+
+const onAdjustmentsUpdate = (adjustments: MonthAdjustment[]): void => {
+  projectionStore.setMonthlyAdjustments(adjustments)
 }
 
 const shareState = reactive({
@@ -358,7 +364,14 @@ const downloadShareSummary = (): void => {
 
       <StatusMessage :message="shareState.message" :tone="shareState.tone" class="mt-3" />
       <pre class="share-preview mt-4">{{ shareSummary }}</pre>
-      <ProjectionTable v-if="showTable" :rows="projectionRows" :format-currency="formatCurrency" />
+      <ProjectionTable
+        v-if="showTable"
+        :rows="projectionRows"
+        :format-currency="formatCurrency"
+        :adjustments="monthlyAdjustments"
+        :readonly="collabStore.isReadOnly"
+        @update:adjustments="onAdjustmentsUpdate"
+      />
     </div>
 
     <!-- Expenses dialog -->
