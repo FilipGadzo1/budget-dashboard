@@ -1,4 +1,4 @@
-export type ThemeMode = 'light' | 'dark'
+export type ThemeMode = 'light' | 'dark' | 'unicorn'
 
 export interface ExpenseItem {
   id: string

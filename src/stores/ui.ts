@@ -34,9 +34,9 @@ export const useUiStore = defineStore('ui', () => {
   const applyTheme = (mode: ThemeMode): void => {
     if (typeof document === 'undefined') return
     const root = document.documentElement
-    const isDark = mode === 'dark'
-    root.classList.toggle('dark', isDark)
-    root.classList.toggle('app-dark', isDark)
+    root.classList.toggle('dark',        mode === 'dark')
+    root.classList.toggle('app-dark',    mode === 'dark')
+    root.classList.toggle('app-unicorn', mode === 'unicorn')
   }
 
   const setSelectedMonth = (month: string): void => {
@@ -72,7 +72,11 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const toggleTheme = (): void => {
-    setThemeMode(snapshot.value.themeMode === 'dark' ? 'light' : 'dark')
+    const next: ThemeMode =
+      snapshot.value.themeMode === 'light' ? 'dark'
+      : snapshot.value.themeMode === 'dark' ? 'unicorn'
+      : 'light'
+    setThemeMode(next)
   }
 
   const setPreferences = (preferences: Pick<UiStateSnapshot, 'currencyCode' | 'locale'>): void => {

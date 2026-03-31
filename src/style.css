@@ -72,6 +72,41 @@ html.app-dark {
   --sidebar-active: rgba(255, 255, 255, 0.08);
 }
 
+html.app-unicorn {
+  color-scheme: light;
+
+  --app-bg: #fdf4ff;
+  --app-surface: #ffffff;
+  --app-surface-hover: #fae8ff;
+  --app-border: #e9d5ff;
+  --app-border-strong: #d8b4fe;
+  --app-text: #3b0764;
+  --app-text-secondary: #7c3aed;
+  --app-text-tertiary: #a78bfa;
+
+  --app-accent: #a855f7;
+  --app-accent-hover: #9333ea;
+  --app-accent-soft: rgba(168, 85, 247, 0.10);
+  --app-accent-text: #ffffff;
+
+  --app-positive: #059669;
+  --app-positive-soft: rgba(5, 150, 105, 0.08);
+  --app-positive-border: rgba(5, 150, 105, 0.20);
+  --app-negative: #f43f5e;
+  --app-negative-soft: rgba(244, 63, 94, 0.06);
+  --app-negative-border: rgba(244, 63, 94, 0.20);
+  --app-warning: #f59e0b;
+  --app-warning-soft: rgba(245, 158, 11, 0.06);
+  --app-warning-border: rgba(245, 158, 11, 0.20);
+
+  --sidebar-bg: #2e1065;
+  --sidebar-text: #e9d5ff;
+  --sidebar-text-muted: #a78bfa;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-active: rgba(255, 255, 255, 0.14);
+  --sidebar-accent: #e879f9;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────── */
 
 html {
@@ -912,4 +947,162 @@ button, input, select, textarea {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* ── Unicorn theme: rainbows & sparkles ───────────────────────────── */
+
+@keyframes rainbow-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+@keyframes sparkle-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1) saturate(1); }
+  50%       { opacity: 0.9; filter: brightness(1.12) saturate(1.3); }
+}
+
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  30%       { opacity: 1; transform: scale(1.3) rotate(72deg); }
+  65%       { opacity: 0.7; transform: scale(0.9) rotate(144deg); }
+}
+
+@keyframes unicorn-breathe {
+  0%, 100% { transform: scale(1) rotate(-4deg); }
+  50%       { transform: scale(1.04) rotate(-2deg); }
+}
+
+@keyframes sparkle-twinkle-b {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  40%       { opacity: 1; transform: scale(1.1) rotate(-90deg); }
+  70%       { opacity: 0.5; transform: scale(0.8) rotate(-150deg); }
+}
+
+/* Background unicorn watermark */
+html.app-unicorn body::before {
+  content: '';
+  position: fixed;
+  bottom: -4vmin;
+  right: -3vmin;
+  width: 36vmin;
+  height: 36vmin;
+  background: url('/unicorn.svg') no-repeat center / contain;
+  color: #a855f7;
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: 0;
+  animation: unicorn-breathe 9s ease-in-out infinite;
+}
+
+/* Sidebar logo: animated rainbow orb + sparkle stars */
+html.app-unicorn .sidebar-logo {
+  background: linear-gradient(135deg, #f87171, #fb923c, #fbbf24, #4ade80, #60a5fa, #a78bfa, #f472b6, #f87171);
+  background-size: 300% 300%;
+  animation: rainbow-flow 6s ease infinite;
+  color: #fff;
+  overflow: visible;
+}
+
+html.app-unicorn .sidebar-logo::before {
+  content: '✦';
+  position: absolute;
+  top: -0.55rem;
+  right: -0.6rem;
+  font-size: 0.65rem;
+  color: #fbbf24;
+  animation: sparkle-twinkle 2.2s ease-in-out infinite;
+  pointer-events: none;
+  line-height: 1;
+}
+
+html.app-unicorn .sidebar-logo::after {
+  content: '✦';
+  position: absolute;
+  bottom: -0.45rem;
+  left: -0.5rem;
+  font-size: 0.5rem;
+  color: #f472b6;
+  animation: sparkle-twinkle-b 3s ease-in-out infinite 0.8s;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Mobile topbar logo: same rainbow treatment */
+html.app-unicorn .mobile-topbar-logo {
+  background: linear-gradient(135deg, #f87171, #fb923c, #fbbf24, #4ade80, #60a5fa, #a78bfa, #f472b6, #f87171);
+  background-size: 300% 300%;
+  animation: rainbow-flow 6s ease infinite;
+  color: #fff;
+  overflow: visible;
+}
+
+html.app-unicorn .mobile-topbar-logo::after {
+  content: '✦';
+  position: absolute;
+  top: -0.4rem;
+  right: -0.5rem;
+  font-size: 0.55rem;
+  color: #fbbf24;
+  animation: sparkle-twinkle 2.8s ease-in-out infinite 0.4s;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Page titles get a sparkle ✨ */
+html.app-unicorn .page-title::after {
+  content: ' ✨';
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+
+/* KPI values: gentle shimmer sparkle */
+html.app-unicorn .kpi-value {
+  animation: sparkle-pulse 3s ease-in-out infinite;
+}
+
+/* Primary buttons: pink-to-purple shimmer */
+html.app-unicorn .btn-primary {
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #a855f7 100%);
+  background-size: 200% auto;
+  border-color: transparent;
+  animation: rainbow-flow 4s ease infinite, sparkle-pulse 2.5s ease infinite;
+}
+
+html.app-unicorn .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #9333ea 0%, #db2777 50%, #9333ea 100%);
+  background-size: 200% auto;
+  animation: rainbow-flow 4s ease infinite;
+}
+
+/* KPI cards: animated rainbow top border */
+html.app-unicorn .kpi-card {
+  position: relative;
+  overflow: hidden;
+}
+
+html.app-unicorn .kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #60a5fa, #a78bfa, #f472b6, #f87171);
+  background-size: 200% auto;
+  animation: rainbow-flow 4s linear infinite;
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+/* Savings goal cards: rainbow top stripe */
+html.app-unicorn .savings-card {
+  position: relative;
+  overflow: hidden;
+}
+
+html.app-unicorn .savings-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #a78bfa, #f472b6, #fbbf24, #4ade80, #60a5fa, #a78bfa);
+  background-size: 200% auto;
+  animation: rainbow-flow 5s linear infinite;
 }

@@ -117,6 +117,13 @@ const resetAll = async (): Promise<void> => {
           >
             <i class="pi pi-moon text-xs" /> Dark
           </button>
+          <button
+            class="btn btn-sm"
+            :class="uiStore.themeMode === 'unicorn' ? 'btn-primary' : 'btn-secondary'"
+            @click="uiStore.setThemeMode('unicorn')"
+          >
+            🦄 Unicorn
+          </button>
         </div>
       </div>
 

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useUiStore } from '@/stores/ui'
+import { useUnicornSparkles } from '@/composables/useUnicornSparkles'
 
 const route = useRoute()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
+useUnicornSparkles()
 const sidebarOpen = ref(false)
 
 const navItems = [
@@ -19,6 +21,17 @@ const navItems = [
   { path: '/collaboration', icon: 'pi pi-users', label: 'Collab' },
   { path: '/settings', icon: 'pi pi-cog', label: 'Settings' },
 ]
+
+const themeToggleIcon = computed(() =>
+  uiStore.themeMode === 'light' ? 'pi pi-moon'
+  : uiStore.themeMode === 'dark' ? 'pi pi-sparkles'
+  : 'pi pi-sun'
+)
+const themeToggleLabel = computed(() =>
+  uiStore.themeMode === 'light' ? 'Dark mode'
+  : uiStore.themeMode === 'dark' ? 'Unicorn mode'
+  : 'Light mode'
+)
 
 const toggleSidebar = (): void => {
   sidebarOpen.value = !sidebarOpen.value
@@ -42,7 +55,7 @@ const exitContext = async (): Promise<void> => {
     </div>
     <div class="mobile-topbar-actions">
       <button class="mobile-topbar-btn" @click="uiStore.toggleTheme()">
-        <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
+        <i :class="themeToggleIcon" />
       </button>
       <button class="mobile-topbar-btn" @click="toggleSidebar">
         <i class="pi pi-bars" />
@@ -136,8 +149,8 @@ const exitContext = async (): Promise<void> => {
         </div>
       </div>
       <button class="sidebar-theme-toggle" @click="uiStore.toggleTheme()">
-        <span>{{ uiStore.themeMode === 'dark' ? 'Light mode' : 'Dark mode' }}</span>
-        <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" class="sidebar-theme-icon" />
+        <span>{{ themeToggleLabel }}</span>
+        <i :class="[themeToggleIcon, 'sidebar-theme-icon']" />
       </button>
       <button class="sidebar-theme-toggle" @click="signOut">
         <span>Sign out</span>
