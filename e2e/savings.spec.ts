@@ -175,8 +175,8 @@ test.describe('Goal CRUD', () => {
     const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
     await expect(card).toBeVisible({ timeout: 8000 })
 
-    // Card should show progress: 0 / target
-    await expect(card.locator('text=5,000')).toBeVisible()
+    // Card should show progress: 0 / target (multiple spans contain "5,000" — pick first)
+    await expect(card.locator('text=5,000').first()).toBeVisible()
   })
 
   test('new card shows Active status pill', async ({ page }) => {
@@ -203,9 +203,9 @@ test.describe('Goal CRUD', () => {
     await page.fill('#sg-date', '2027-12-01')
     await page.click('button:has-text("Create goal")')
 
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`)
+    // Find specifically the card that contains both the name AND the date chip
+    const card = page.locator(`.savings-card:has-text("Dec 2027"):has-text("${GOAL_NAME}")`)
     await expect(card).toBeVisible({ timeout: 8000 })
-    // Dec 2027 target date chip
     await expect(card.locator('text=Dec 2027')).toBeVisible()
     await page.screenshot({ path: 'e2e/screenshots/savings-goal-with-date.png' })
   })
@@ -256,15 +256,16 @@ test.describe('Goal CRUD', () => {
   test('confirming delete removes the goal card', async ({ page }) => {
     await openNewGoalDialog(page, GOAL_NAME, GOAL_TARGET)
     await page.click('button:has-text("Create goal")')
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
-    await expect(card).toBeVisible({ timeout: 8000 })
+    const cards = page.locator(`.savings-card:has-text("${GOAL_NAME}")`)
+    const countBefore = await cards.count()
+    await expect(cards.first()).toBeVisible({ timeout: 8000 })
 
-    await card.locator('button:has-text("Delete")').click()
+    await cards.first().locator('button:has-text("Delete")').click()
     await expect(page.locator('text=Delete goal')).toBeVisible({ timeout: 3000 })
-    // Click the confirm button inside the confirm dialog
     await page.locator('.p-dialog button.btn-danger').click()
 
-    await expect(card).not.toBeVisible({ timeout: 6000 })
+    // One fewer card with this name should remain
+    await expect(cards).toHaveCount(countBefore - 1, { timeout: 6000 })
   })
 })
 
@@ -278,18 +279,18 @@ test.describe('Deposits', () => {
     // Create a fresh goal to deposit into
     await openNewGoalDialog(page, GOAL_NAME, '10000')
     await page.click('button:has-text("Create goal")')
-    await expect(page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()).toBeVisible({ timeout: 8000 })
+    await expect(page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()).toBeVisible({ timeout: 8000 })
   })
 
   test('deposit dialog opens', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
     await page.screenshot({ path: 'e2e/screenshots/savings-deposit-dialog.png' })
   })
 
   test('deposit dialog shows goal progress', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
     // Should show the progress section (0%) — scoped to the dialog
@@ -297,7 +298,7 @@ test.describe('Deposits', () => {
   })
 
   test('logging a deposit updates the card progress', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
 
@@ -311,7 +312,7 @@ test.describe('Deposits', () => {
   })
 
   test('deposit appears in history list', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
 
@@ -330,7 +331,7 @@ test.describe('Deposits', () => {
 
   test('withdrawal (negative amount) is accepted', async ({ page }) => {
     // First deposit so there's something to withdraw from
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
     await fillPvInput(page, '#dep-amount', '3000')
@@ -355,7 +356,7 @@ test.describe('Deposits', () => {
   })
 
   test('deposit amount of 0 is rejected', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
     await card.locator('button:has-text("Deposit")').click()
     await expect(page.locator('#dep-amount')).toBeVisible({ timeout: 4000 })
     // Leave amount at 0 — button should be disabled (scoped to the open dialog)
@@ -363,7 +364,7 @@ test.describe('Deposits', () => {
   })
 
   test('can delete a deposit from history', async ({ page }) => {
-    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).first()
+    const card = page.locator(`.savings-card:has-text("${GOAL_NAME}")`).last()
 
     // Log a deposit
     await card.locator('button:has-text("Deposit")').click()
@@ -395,7 +396,7 @@ test.describe('Summary strip', () => {
     // Create a goal so the strip shows
     await openNewGoalDialog(page, `Summary Test ${Date.now()}`, '8000')
     await page.click('button:has-text("Create goal")')
-    await expect(page.locator('.savings-card')).toBeVisible({ timeout: 8000 })
+    await expect(page.locator('.savings-card').first()).toBeVisible({ timeout: 8000 })
 
     await expect(page.locator('.savings-summary')).toBeVisible()
     await expect(page.locator('text=Total saved')).toBeVisible()
@@ -421,7 +422,7 @@ test.describe('Projections integration', () => {
     // Set monthly contribution
     await fillPvInput(page, '#sg-contrib', '200')
     await page.click('button:has-text("Create goal")')
-    await expect(page.locator('.savings-card')).toBeVisible({ timeout: 8000 })
+    await expect(page.locator('.savings-card').first()).toBeVisible({ timeout: 8000 })
 
     // Navigate to projections
     await page.goto('/projections')
