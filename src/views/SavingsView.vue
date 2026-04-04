@@ -281,4 +281,22 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
   flex-direction: column;
   gap: 0.875rem;
 }
+
+@media (max-width: 1023px) {
+  /* Summary strip: 2×2 grid on mobile */
+  .savings-summary-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .savings-summary-divider {
+    display: none;
+  }
+
+  /* DM Mono for summary amounts */
+  .savings-summary-value {
+    font-family: 'DM Mono', monospace;
+  }
+}
 </style>

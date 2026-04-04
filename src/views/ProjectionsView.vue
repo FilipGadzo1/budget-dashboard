@@ -405,14 +405,15 @@ const downloadShareSummary = (): void => {
 
       <StatusMessage :message="shareState.message" :tone="shareState.tone" class="mt-3" />
       <pre class="share-preview mt-4">{{ shareSummary }}</pre>
-      <ProjectionTable
-        v-if="showTable"
-        :rows="projectionRows"
-        :format-currency="formatCurrency"
-        :adjustments="monthlyAdjustments"
-        :readonly="collabStore.isReadOnly"
-        @update:adjustments="onAdjustmentsUpdate"
-      />
+      <div v-if="showTable" class="projection-table-wrap">
+        <ProjectionTable
+          :rows="projectionRows"
+          :format-currency="formatCurrency"
+          :adjustments="monthlyAdjustments"
+          :readonly="collabStore.isReadOnly"
+          @update:adjustments="onAdjustmentsUpdate"
+        />
+      </div>
     </div>
 
     <!-- Expenses dialog -->
@@ -449,3 +450,19 @@ const downloadShareSummary = (): void => {
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 1023px) {
+  /* DM Mono for all number inputs */
+  :deep(.p-inputnumber-input),
+  :deep(.p-inputtext) {
+    font-family: 'DM Mono', monospace !important;
+  }
+
+  /* Ensure projection table scrolls horizontally */
+  .projection-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+</style>

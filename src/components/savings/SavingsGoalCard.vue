@@ -293,4 +293,26 @@ const targetDateLabel = computed(() => {
   gap: 0.5rem;
   padding-top: 0.125rem;
 }
+
+@media (max-width: 1023px) {
+  /* Taller progress bar */
+  .savings-progress-track {
+    height: 12px;
+  }
+
+  /* Full-width action buttons */
+  .savings-card-actions {
+    flex-direction: column;
+  }
+
+  .savings-card-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* DM Mono for amounts */
+  .savings-card-amounts {
+    font-family: 'DM Mono', monospace;
+  }
+}
 </style>
