@@ -63,10 +63,9 @@ const statusPill = computed(() => {
 })
 
 const kpis = computed(() => [
-  { label: 'Monthly Net', value: formatCurrency(monthlyNet.value), tone: monthlyNet.value >= 0 ? 'text-positive' : 'text-negative' },
-  { label: 'Total Income', value: formatCompactCurrency(summary.value.totalIncome), tone: 'text-positive' },
-  { label: 'Total Expenses', value: formatCompactCurrency(summary.value.totalExpenses), tone: 'text-primary' },
-  { label: 'Ending Balance', value: formatCompactCurrency(summary.value.endingBalance), tone: summary.value.endingBalance >= 0 ? 'text-positive' : 'text-negative' },
+  { label: 'Total Income', shortLabel: 'Income', value: formatCompactCurrency(summary.value.totalIncome), tone: 'text-positive' },
+  { label: 'Total Expenses', shortLabel: 'Expenses', value: formatCompactCurrency(summary.value.totalExpenses), tone: 'text-primary' },
+  { label: 'Ending Balance', shortLabel: 'Ending Bal.', value: formatCompactCurrency(summary.value.endingBalance), tone: summary.value.endingBalance >= 0 ? 'text-positive' : 'text-negative' },
 ])
 
 const insights = computed(() => {
@@ -126,9 +125,10 @@ const insights = computed(() => {
     </div>
 
     <!-- KPI Grid -->
-    <div class="mobile-kpi-scroll grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div class="kpi-grid">
       <article v-for="kpi in kpis" :key="kpi.label" class="kpi-card">
-        <p class="text-label">{{ kpi.label }}</p>
+        <p class="text-label kpi-label-full">{{ kpi.label }}</p>
+        <p class="text-label kpi-label-short">{{ kpi.shortLabel }}</p>
         <p class="kpi-value" :class="kpi.tone">{{ kpi.value }}</p>
       </article>
     </div>
@@ -175,12 +175,24 @@ const insights = computed(() => {
 </template>
 
 <style scoped>
+/* Short labels hidden on desktop, full labels shown */
+.kpi-label-short { display: none; }
+.kpi-label-full  { display: block; }
+
+/* KPI grid — desktop: 3 columns */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0;
+}
+
 /* Hide hero on desktop */
 .mobile-hero {
   display: none;
 }
 
-/* ── Mobile hero ─────────────────────────────────────────────────────── */
+/* ── Tablet (641–1023px): 3 columns, still enough space ─────────────── */
 @media (max-width: 1023px) {
   .mobile-hero {
     display: flex;
@@ -203,37 +215,35 @@ const insights = computed(() => {
   }
 
   .mobile-hero-amount {
-    font-size: 2rem;
-    font-weight: 500;
-    letter-spacing: -0.03em;
+    font-size: 1.75rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
     color: var(--app-positive);
     font-family: 'DM Mono', monospace;
     line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mobile-hero-amount--negative {
     color: var(--app-negative);
   }
+}
 
-  .mobile-kpi-scroll {
-    display: flex;
-    gap: 0.75rem;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.25rem;
-    margin-bottom: 0.5rem;
-    scrollbar-width: none;
+/* ── Small phones (≤ 480px): 2-column grid, 3rd card spans both ─────── */
+@media (max-width: 480px) {
+  .kpi-label-full  { display: none; }
+  .kpi-label-short { display: block; }
+
+  .kpi-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
   }
 
-  .mobile-kpi-scroll::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-kpi-scroll > * {
-    flex: 0 0 160px;
-    scroll-snap-align: start;
-    min-width: 160px;
+  /* Third card (Ending Balance) spans full width */
+  .kpi-grid .kpi-card:last-child {
+    grid-column: 1 / -1;
   }
 }
 </style>

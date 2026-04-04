@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useUiStore } from '@/stores/ui'
 
 const route = useRoute()
+const router = useRouter()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
 const sidebarOpen = ref(false)
+const avatarMenuOpen = ref(false)
 
 const pageTitle = computed(() => {
   const match = navItems.find((item) =>
@@ -30,12 +32,34 @@ const navItems = [
 
 const mobileTabItems = navItems.filter((item) => item.path !== '/settings')
 
+const onlineOthers = computed(() =>
+  collabStore.onlineUsers.filter((u) => u.userId !== user.value?.id),
+)
+
 const toggleSidebar = (): void => {
   sidebarOpen.value = !sidebarOpen.value
 }
 
 const closeSidebar = (): void => {
   sidebarOpen.value = false
+}
+
+const toggleAvatarMenu = (): void => {
+  avatarMenuOpen.value = !avatarMenuOpen.value
+}
+
+const closeAvatarMenu = (): void => {
+  avatarMenuOpen.value = false
+}
+
+const goToSettings = (): void => {
+  avatarMenuOpen.value = false
+  router.push('/settings')
+}
+
+const handleSignOut = async (): Promise<void> => {
+  avatarMenuOpen.value = false
+  await signOut()
 }
 
 const exitContext = async (): Promise<void> => {
@@ -54,19 +78,66 @@ const exitContext = async (): Promise<void> => {
       <button class="mobile-topbar-btn" @click="uiStore.toggleTheme()">
         <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
       </button>
-      <button class="mobile-topbar-avatar" @click="toggleSidebar">
-        <img
-          v-if="user?.user_metadata?.avatar_url"
-          :src="user.user_metadata.avatar_url"
-          class="mobile-topbar-avatar-img"
-          alt="Profile"
-        />
-        <span v-else class="mobile-topbar-avatar-initials">
-          {{ (user?.user_metadata?.full_name || user?.email || 'U').charAt(0).toUpperCase() }}
-        </span>
-      </button>
+      <div class="mobile-avatar-wrap">
+        <button class="mobile-topbar-avatar" :class="{ 'mobile-topbar-avatar-active': avatarMenuOpen }" @click.stop="toggleAvatarMenu">
+          <img
+            v-if="user?.user_metadata?.avatar_url"
+            :src="user.user_metadata.avatar_url"
+            class="mobile-topbar-avatar-img"
+            alt="Profile"
+          />
+          <span v-else class="mobile-topbar-avatar-initials">
+            {{ (user?.user_metadata?.full_name || user?.email || 'U').charAt(0).toUpperCase() }}
+          </span>
+          <!-- Online indicator dot -->
+          <span v-if="onlineOthers.length > 0" class="mobile-avatar-online-dot" />
+        </button>
+
+        <!-- Avatar dropdown -->
+        <Transition name="avatar-menu">
+          <div v-if="avatarMenuOpen" class="avatar-menu" @click.stop>
+            <!-- Online collaborators -->
+            <div v-if="onlineOthers.length > 0" class="avatar-menu-online-section">
+              <p class="avatar-menu-section-label">Online now</p>
+              <div
+                v-for="u in onlineOthers"
+                :key="u.userId"
+                class="avatar-menu-online-row"
+              >
+                <div class="avatar-menu-online-avatar">
+                  <img v-if="u.avatarUrl" :src="u.avatarUrl" :alt="u.userName" />
+                  <span v-else>{{ (u.userName || u.userEmail || '?').charAt(0).toUpperCase() }}</span>
+                  <span class="avatar-menu-online-badge" />
+                </div>
+                <span class="avatar-menu-online-name">{{ u.userName || u.userEmail }}</span>
+              </div>
+              <div class="avatar-menu-divider" />
+            </div>
+
+            <!-- User info -->
+            <div v-if="user" class="avatar-menu-user">
+              <p class="avatar-menu-user-name">{{ user.user_metadata?.full_name || user.email }}</p>
+              <p class="avatar-menu-user-email">{{ user.email }}</p>
+            </div>
+            <div class="avatar-menu-divider" />
+
+            <!-- Actions -->
+            <button class="avatar-menu-item" @click="goToSettings">
+              <i class="pi pi-cog" />
+              Settings
+            </button>
+            <button class="avatar-menu-item avatar-menu-item-danger" @click="handleSignOut">
+              <i class="pi pi-sign-out" />
+              Sign out
+            </button>
+          </div>
+        </Transition>
+      </div>
     </div>
   </header>
+
+  <!-- Avatar menu backdrop -->
+  <div v-if="avatarMenuOpen" class="avatar-menu-backdrop" @click="closeAvatarMenu" />
 
   <!-- Sidebar overlay (mobile) -->
   <div
@@ -414,6 +485,10 @@ const exitContext = async (): Promise<void> => {
 }
 
 /* ─── Mobile avatar button ───────────────────────────────────────────────── */
+.mobile-avatar-wrap {
+  position: relative;
+}
+
 .mobile-topbar-avatar {
   width: 36px;
   height: 36px;
@@ -424,20 +499,23 @@ const exitContext = async (): Promise<void> => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
   flex-shrink: 0;
   transition: border-color 0.15s ease;
-}
-
-.mobile-topbar-avatar:hover {
-  border-color: var(--app-accent);
+  position: relative;
 }
 
 .mobile-topbar-avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.mobile-topbar-avatar-active {
+  border-color: var(--app-accent);
 }
 
 .mobile-topbar-avatar-initials {
@@ -445,6 +523,187 @@ const exitContext = async (): Promise<void> => {
   font-weight: 600;
   color: var(--app-text-secondary);
   font-family: 'DM Sans', sans-serif;
+}
+
+.mobile-avatar-online-dot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--app-positive);
+  border: 2px solid var(--app-bg);
+}
+
+/* ─── Avatar dropdown menu ───────────────────────────────────────────────── */
+.avatar-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
+.avatar-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 220px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 0.875rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  padding: 0.375rem;
+}
+
+.avatar-menu-user {
+  padding: 0.5rem 0.625rem 0.375rem;
+}
+
+.avatar-menu-user-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text);
+  margin: 0 0 0.125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar-menu-user-email {
+  font-size: 0.7rem;
+  color: var(--app-text-secondary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar-menu-divider {
+  height: 1px;
+  background: var(--app-border);
+  margin: 0.375rem 0;
+}
+
+.avatar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: none;
+  font-size: 0.875rem;
+  color: var(--app-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+  font-family: inherit;
+}
+
+.avatar-menu-item i {
+  font-size: 0.875rem;
+  color: var(--app-text-secondary);
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.avatar-menu-item:hover {
+  background: var(--app-surface-hover);
+}
+
+.avatar-menu-item-danger {
+  color: var(--app-negative);
+}
+
+.avatar-menu-item-danger i {
+  color: var(--app-negative);
+}
+
+.avatar-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ─── Online collaborators in dropdown ───────────────────────────────────── */
+.avatar-menu-online-section {
+  padding: 0.375rem 0 0;
+}
+
+.avatar-menu-section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--app-text-secondary);
+  margin: 0 0 0.375rem;
+  padding: 0 0.625rem;
+}
+
+.avatar-menu-online-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.625rem;
+}
+
+.avatar-menu-online-avatar {
+  position: relative;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 50%;
+  background: var(--app-surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--app-accent);
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.avatar-menu-online-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-menu-online-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--app-positive);
+  border: 1.5px solid var(--app-surface);
+}
+
+.avatar-menu-online-name {
+  font-size: 0.8125rem;
+  color: var(--app-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Avatar menu transition ─────────────────────────────────────────────── */
+.avatar-menu-enter-active {
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.avatar-menu-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.avatar-menu-enter-from,
+.avatar-menu-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(-4px);
+  transform-origin: top right;
 }
 
 /* ─── Sidebar transition ─────────────────────────────────────────────────── */
