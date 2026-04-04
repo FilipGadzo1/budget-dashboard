@@ -8,6 +8,7 @@ import SavingsGoalCard from '@/components/savings/SavingsGoalCard.vue'
 import SavingsGoalDialog from '@/components/savings/SavingsGoalDialog.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import type { SavingsGoal, SavingsGoalStatus } from '@/models'
+import { computeRequiredMonthly } from '@/services/savingsService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useSavingsStore } from '@/stores/savings'
 
@@ -93,6 +94,12 @@ const handleDeleteDeposit = async (depositId: string): Promise<void> => {
   depositGoal.value = savingsStore.goals.find((g) => g.id === depositGoal.value!.id) ?? depositGoal.value
 }
 
+const handleUseRequired = (goal: SavingsGoal): void => {
+  const required = computeRequiredMonthly(goal)
+  if (required === null) return
+  savingsStore.updateGoal(goal.id, { monthlyContribution: required })
+}
+
 const depositDeposits = computed(() =>
   depositGoal.value ? (savingsStore.deposits[depositGoal.value.id] ?? []) : [],
 )
@@ -153,6 +160,7 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
         @deposit="openDeposit(goal)"
         @edit="openEditGoal(goal)"
         @delete="openDelete(goal.id)"
+        @use-required="handleUseRequired(goal)"
       />
     </div>
 

@@ -6,6 +6,7 @@ import type { SavingsDeposit, SavingsGoal } from '@/models'
 import {
   deleteSavingsDeposit,
   deleteSavingsGoal,
+  fetchAllDepositsForUser,
   fetchDepositsForGoal,
   fetchSavingsGoals,
   insertSavingsDeposit,
@@ -43,8 +44,16 @@ export const useSavingsStore = defineStore('savings', () => {
     if (!userId) return
 
     isReady.value = false
-    goals.value = await fetchSavingsGoals(userId)
-    deposits.value = {}
+    const [fetchedGoals, allDeposits] = await Promise.all([
+      fetchSavingsGoals(userId),
+      fetchAllDepositsForUser(userId),
+    ])
+    goals.value = fetchedGoals
+    deposits.value = allDeposits.reduce<Record<string, SavingsDeposit[]>>((acc, d) => {
+      if (!acc[d.goalId]) acc[d.goalId] = []
+      acc[d.goalId].push(d)
+      return acc
+    }, {})
     isReady.value = true
   }
 

@@ -16,6 +16,8 @@ describe('projectionService', () => {
         monthlyIncome: 4200,
         monthlyExpenses: 3000,
         months: 3,
+        expenseItems: [],
+        monthlyAdjustments: [],
       },
       '2026-01',
       'en-US',
@@ -33,6 +35,8 @@ describe('projectionService', () => {
         monthlyIncome: 2000,
         monthlyExpenses: 1500,
         months: 2,
+        expenseItems: [],
+        monthlyAdjustments: [],
       },
       '2026-04',
       'en-US',
@@ -52,6 +56,8 @@ describe('projectionService', () => {
         monthlyIncome: 3000,
         monthlyExpenses: 2500,
         months: 3,
+        expenseItems: [],
+        monthlyAdjustments: [],
       },
       '2026-01',
       'en-US',
@@ -67,6 +73,8 @@ describe('projectionService', () => {
         monthlyIncome: 2400,
         monthlyExpenses: 3000,
         months: 12,
+        expenseItems: [],
+        monthlyAdjustments: [],
       }),
     ).toBe(600)
 
@@ -75,6 +83,8 @@ describe('projectionService', () => {
         monthlyIncome: 3200,
         monthlyExpenses: 3000,
         months: 12,
+        expenseItems: [],
+        monthlyAdjustments: [],
       }),
     ).toBe(0)
   })
@@ -85,6 +95,8 @@ describe('projectionService', () => {
         monthlyIncome: 1800,
         monthlyExpenses: 2200,
         months: 4,
+        expenseItems: [],
+        monthlyAdjustments: [],
       },
       '2026-01',
       'en-US',

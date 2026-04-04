@@ -19,6 +19,7 @@ import {
   buildProjectionSummary,
   buildProjectionMilestones,
 } from '@/services/projectionService'
+import { mergeDepositsIntoAdjustments } from '@/services/savingsProjectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
@@ -58,8 +59,16 @@ const { currencyCode, formatCurrency, locale, selectedMonth: sharedSelectedMonth
 // expenseItems sum instead — so we inject savings as a synthetic item in that case.
 const effectiveInputs = computed((): ProjectionInputs => {
   const savings = savingsStore.totalMonthlyContributions
-  if (savings === 0) return projectionStore.inputs
+  const allDeposits = Object.values(savingsStore.deposits).flat()
   const base = projectionStore.inputs
+
+  const mergedAdjustments = mergeDepositsIntoAdjustments(base.monthlyAdjustments, allDeposits)
+  const adjustmentsChanged = mergedAdjustments !== base.monthlyAdjustments
+
+  if (savings === 0) {
+    return adjustmentsChanged ? { ...base, monthlyAdjustments: mergedAdjustments } : base
+  }
+
   if (base.expenseItems.length > 0) {
     return {
       ...base,
@@ -67,9 +76,11 @@ const effectiveInputs = computed((): ProjectionInputs => {
         ...base.expenseItems,
         { id: '__savings__', name: 'Savings contributions', amount: savings, sortOrder: 9999 },
       ],
+      monthlyAdjustments: mergedAdjustments,
     }
   }
-  return { ...base, monthlyExpenses: base.monthlyExpenses + savings }
+
+  return { ...base, monthlyExpenses: base.monthlyExpenses + savings, monthlyAdjustments: mergedAdjustments }
 })
 
 const form = reactive({
