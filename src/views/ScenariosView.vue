@@ -111,12 +111,12 @@ const importFile = async (event: Event): Promise<void> => {
         <i class="pi pi-eye text-xs" />
         <span>You have view-only access. Load and export scenarios, but cannot save or modify.</span>
       </div>
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div class="flex-1">
+      <div class="scenarios-toolbar flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="scenarios-toolbar-name flex-1">
           <label class="form-label" for="scenario-name">Scenario name</label>
           <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" :disabled="collabStore.isReadOnly" />
         </div>
-        <div class="flex gap-2 sm:flex-shrink-0">
+        <div class="scenarios-toolbar-actions flex gap-2 sm:flex-shrink-0">
           <button class="btn btn-primary flex-1 sm:flex-none" :disabled="collabStore.isReadOnly" @click="saveScenario">
             <i class="pi pi-save text-sm" /> Save current
           </button>
@@ -128,7 +128,7 @@ const importFile = async (event: Event): Promise<void> => {
     </div>
 
     <!-- Import/Export bar -->
-    <div class="mb-6 flex flex-wrap items-center gap-3">
+    <div class="scenarios-import-export mb-6 flex flex-wrap items-center gap-3">
       <button class="btn btn-secondary btn-sm" @click="exportFile">
         <i class="pi pi-upload text-xs" /> Export all
       </button>
@@ -191,3 +191,33 @@ const importFile = async (event: Event): Promise<void> => {
     />
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 1023px) {
+  .scenarios-toolbar {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .scenarios-toolbar-name {
+    width: 100%;
+  }
+
+  .scenarios-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .scenarios-toolbar-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .scenarios-import-export {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+</style>
