@@ -1,7 +1,9 @@
 import type { SavingsGoal } from '@/models'
 import {
+  computeIsOnTrack,
   computeMonthsRemaining,
   computeProgress,
+  computeProjectedCompletion,
   computeRemaining,
   computeRequiredMonthly,
   isGoalReached,
@@ -103,6 +105,70 @@ describe('isGoalReached', () => {
 
   it('returns false when targetAmount is 0', () => {
     expect(isGoalReached(makeGoal({ currentAmount: 0, targetAmount: 0 }))).toBe(false)
+  })
+})
+
+describe('computeProjectedCompletion', () => {
+  it('returns null when goal is already reached', () => {
+    expect(
+      computeProjectedCompletion(makeGoal({ currentAmount: 10000, targetAmount: 10000 })),
+    ).toBeNull()
+  })
+
+  it('returns null when monthlyContribution is 0', () => {
+    expect(
+      computeProjectedCompletion(makeGoal({ monthlyContribution: 0 })),
+    ).toBeNull()
+  })
+
+  it('returns correct completion month', () => {
+    // 7500 remaining at 500/mo = 15 months from Jan 2026 → Apr 2027
+    const now = new Date('2026-01-01')
+    const goal = makeGoal({ currentAmount: 2500, targetAmount: 10000, monthlyContribution: 500 })
+    expect(computeProjectedCompletion(goal, now)).toBe('2027-04')
+  })
+
+  it('handles month overflow across year boundary', () => {
+    // 1000 remaining at 100/mo = 10 months from Sep 2026 → Jul 2027
+    const now = new Date('2026-09-01')
+    const goal = makeGoal({ currentAmount: 9000, targetAmount: 10000, monthlyContribution: 100 })
+    expect(computeProjectedCompletion(goal, now)).toBe('2027-07')
+  })
+})
+
+describe('computeIsOnTrack', () => {
+  it('returns null when no targetDate', () => {
+    expect(computeIsOnTrack(makeGoal({ targetDate: null }))).toBeNull()
+  })
+
+  it('returns true when goal is already reached', () => {
+    expect(
+      computeIsOnTrack(makeGoal({ currentAmount: 10000, targetAmount: 10000, targetDate: '2027-01-01' })),
+    ).toBe(true)
+  })
+
+  it('returns true when contribution meets required', () => {
+    const now = new Date('2026-01-01')
+    // 7500 remaining over 10 months = 750 required; contribution 750 → on track
+    const goal = makeGoal({
+      currentAmount: 2500,
+      targetAmount: 10000,
+      targetDate: '2026-11-01',
+      monthlyContribution: 750,
+    })
+    expect(computeIsOnTrack(goal, now)).toBe(true)
+  })
+
+  it('returns false when contribution is below required', () => {
+    const now = new Date('2026-01-01')
+    // 7500 remaining over 10 months = 750 required; contribution 200 → off track
+    const goal = makeGoal({
+      currentAmount: 2500,
+      targetAmount: 10000,
+      targetDate: '2026-11-01',
+      monthlyContribution: 200,
+    })
+    expect(computeIsOnTrack(goal, now)).toBe(false)
   })
 })
 

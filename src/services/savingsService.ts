@@ -56,6 +56,31 @@ export function isGoalReached(goal: SavingsGoal): boolean {
 }
 
 /**
+ * Returns the projected completion month (YYYY-MM) based on the current monthly contribution.
+ * Returns null if the goal is already reached or contribution is 0.
+ */
+export function computeProjectedCompletion(goal: SavingsGoal, now: Date = new Date()): string | null {
+  if (isGoalReached(goal)) return null
+  if (goal.monthlyContribution <= 0) return null
+  const remaining = computeRemaining(goal)
+  const monthsNeeded = Math.ceil(remaining / goal.monthlyContribution)
+  const d = new Date(now.getFullYear(), now.getMonth() + monthsNeeded, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Returns whether the current monthly contribution will reach the goal by its target date.
+ * Returns null if no target date is set. Returns true if the goal is already reached.
+ */
+export function computeIsOnTrack(goal: SavingsGoal, now: Date = new Date()): boolean | null {
+  if (!goal.targetDate) return null
+  if (isGoalReached(goal)) return true
+  const required = computeRequiredMonthly(goal, now)
+  if (required === null) return true
+  return goal.monthlyContribution >= required
+}
+
+/**
  * Sorts goals: active first, then paused, then completed.
  * Within the same status, preserves sort_order ascending.
  */
