@@ -81,7 +81,7 @@ const resetAll = async (): Promise<void> => {
     <!-- Display preferences -->
     <div class="card mb-6">
       <p class="text-heading mb-4">Display preferences</p>
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div class="settings-selects-grid grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div>
           <label class="form-label" for="s-currency">Currency</label>
           <select id="s-currency" v-model="draftCurrency" class="form-select">
@@ -102,7 +102,7 @@ const resetAll = async (): Promise<void> => {
 
       <div class="mt-5">
         <label class="form-label">Theme</label>
-        <div class="mt-1 flex gap-2">
+        <div class="settings-theme-row mt-1 flex gap-2">
           <button
             class="btn btn-sm"
             :class="uiStore.themeMode === 'light' ? 'btn-primary' : 'btn-secondary'"
@@ -153,7 +153,7 @@ const resetAll = async (): Promise<void> => {
         style="border-color: var(--app-negative-border); background: var(--app-negative-soft);"
       >
         <p class="text-sm font-medium text-negative">Are you sure? This will erase all saved scenarios and reset inputs to zero.</p>
-        <div class="mt-3 flex gap-2">
+        <div class="settings-actions mt-3 flex gap-2">
           <button class="btn btn-danger btn-sm" :disabled="resetLoading" @click="resetAll">
             <i v-if="resetLoading" class="pi pi-spin pi-spinner text-xs" />
             Confirm reset
@@ -164,3 +164,38 @@ const resetAll = async (): Promise<void> => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 1023px) {
+  .settings-selects-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-select,
+  :deep(.p-select) {
+    width: 100% !important;
+  }
+
+  .settings-theme-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .text-heading {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .settings-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .settings-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+</style>

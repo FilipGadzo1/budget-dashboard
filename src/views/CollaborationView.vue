@@ -284,4 +284,33 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
   flex: 1;
   min-width: 0;
 }
+
+@media (max-width: 1023px) {
+  .collab-section-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .collab-section-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .collab-section-title {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .shared-budget-card {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .shared-budget-card .flex.items-center.gap-2 {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 </style>
