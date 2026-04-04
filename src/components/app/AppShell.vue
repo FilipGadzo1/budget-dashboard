@@ -21,6 +21,8 @@ const navItems = [
   { path: '/settings', icon: 'pi pi-cog', label: 'Settings' },
 ]
 
+const mobileTabItems = navItems.filter((item) => item.path !== '/settings')
+
 const toggleSidebar = (): void => {
   sidebarOpen.value = !sidebarOpen.value
 }
@@ -151,7 +153,7 @@ const exitContext = async (): Promise<void> => {
   <nav class="mobile-tabs">
     <div class="mobile-tabs-inner">
       <RouterLink
-        v-for="item in navItems"
+        v-for="item in mobileTabItems"
         :key="item.path"
         :to="item.path"
         class="mobile-tab"
