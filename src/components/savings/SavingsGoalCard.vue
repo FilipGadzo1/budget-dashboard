@@ -2,7 +2,14 @@
 import { computed } from 'vue'
 
 import type { SavingsGoal } from '@/models'
-import { computeMonthsRemaining, computeProgress, computeRemaining } from '@/services/savingsService'
+import {
+  computeIsOnTrack,
+  computeMonthsRemaining,
+  computeProgress,
+  computeProjectedCompletion,
+  computeRemaining,
+  computeRequiredMonthly,
+} from '@/services/savingsService'
 
 const props = defineProps<{
   goal: SavingsGoal
@@ -14,11 +21,28 @@ defineEmits<{
   deposit: []
   edit: []
   delete: []
+  'use-required': []
 }>()
 
 const progress = computed(() => computeProgress(props.goal))
 const remaining = computed(() => computeRemaining(props.goal))
 const monthsLeft = computed(() => computeMonthsRemaining(props.goal))
+const isOnTrack = computed(() => computeIsOnTrack(props.goal))
+const requiredMonthly = computed(() => computeRequiredMonthly(props.goal))
+const projectedCompletionMonthKey = computed(() => computeProjectedCompletion(props.goal))
+
+const projectedCompletionLabel = computed(() => {
+  if (!projectedCompletionMonthKey.value) return null
+  const [year, month] = projectedCompletionMonthKey.value.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+})
+
+const lateByMonths = computed(() => {
+  if (isOnTrack.value !== false || !props.goal.targetDate || !projectedCompletionMonthKey.value) return null
+  const [ty, tm] = props.goal.targetDate.slice(0, 7).split('-').map(Number)
+  const [py, pm] = projectedCompletionMonthKey.value.split('-').map(Number)
+  return (py - ty) * 12 + (pm - tm)
+})
 
 const statusLabel = computed(() => {
   if (props.goal.status === 'completed') return 'Completed'
@@ -96,6 +120,20 @@ const targetDateLabel = computed(() => {
       <span v-if="goal.status !== 'completed'" class="savings-meta-chip savings-meta-chip-remaining">
         {{ formatCurrency(remaining) }} to go
       </span>
+      <!-- Projected completion -->
+      <span
+        v-if="projectedCompletionLabel && goal.status === 'active'"
+        :class="['savings-meta-chip', isOnTrack === false ? 'savings-meta-chip-alert' : 'savings-meta-chip-positive']"
+      >
+        <i class="pi pi-flag text-xs" />
+        {{ isOnTrack === false ? `Projected: ${projectedCompletionLabel}` : `On track: ${projectedCompletionLabel}` }}
+      </span>
+      <!-- Warning: won't hit target date -->
+      <span v-if="isOnTrack === false && requiredMonthly !== null" class="savings-meta-chip savings-meta-chip-alert">
+        <i class="pi pi-exclamation-triangle text-xs" />
+        Needs {{ formatCurrency(requiredMonthly) }}/mo
+        <span v-if="lateByMonths !== null">&nbsp;({{ lateByMonths }}mo late)</span>
+      </span>
     </div>
 
     <!-- Actions -->
@@ -106,6 +144,13 @@ const targetDateLabel = computed(() => {
         @click="$emit('deposit')"
       >
         <i class="pi pi-plus" /> Deposit
+      </button>
+      <button
+        v-if="isOnTrack === false && requiredMonthly !== null && !readonly"
+        class="btn btn-secondary btn-sm"
+        @click="$emit('use-required')"
+      >
+        Use required amount
       </button>
       <button
         v-if="!readonly"
@@ -227,6 +272,18 @@ const targetDateLabel = computed(() => {
 .savings-meta-chip-remaining {
   color: var(--app-accent);
   background: var(--app-accent-soft);
+  border-color: transparent;
+}
+
+.savings-meta-chip-alert {
+  color: var(--app-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+  border-color: transparent;
+}
+
+.savings-meta-chip-positive {
+  color: var(--app-positive);
+  background: var(--app-positive-soft, rgba(34, 197, 94, 0.1));
   border-color: transparent;
 }
 
