@@ -340,6 +340,29 @@ export async function fetchDepositsForGoal(goalId: string): Promise<SavingsDepos
   }))
 }
 
+export async function fetchAllDepositsForUser(userId: string): Promise<SavingsDeposit[]> {
+  const { data, error } = await supabase
+    .from('savings_deposits')
+    .select('id, goal_id, user_id, amount, note, deposit_date, created_at')
+    .eq('user_id', userId)
+    .order('deposit_date', { ascending: false })
+
+  if (error) {
+    console.warn('[db] fetchAllDepositsForUser error:', error.message)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    goalId: row.goal_id,
+    userId: row.user_id,
+    amount: Number(row.amount),
+    note: row.note ?? null,
+    depositDate: row.deposit_date,
+    createdAt: row.created_at,
+  }))
+}
+
 export async function insertSavingsDeposit(deposit: SavingsDeposit): Promise<void> {
   const { error } = await supabase.from('savings_deposits').insert({
     id: deposit.id,
