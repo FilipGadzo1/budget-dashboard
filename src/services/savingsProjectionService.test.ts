@@ -1,5 +1,6 @@
 import type { MonthAdjustment, SavingsDeposit } from '@/models'
 import { mergeDepositsIntoAdjustments } from './savingsProjectionService'
+import { describe, it, expect } from 'vitest'
 
 const makeAdj = (overrides: Partial<MonthAdjustment> = {}): MonthAdjustment => ({
   id: 'adj-1',
