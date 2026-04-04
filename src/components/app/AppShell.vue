@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
@@ -11,6 +11,13 @@ const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
 const sidebarOpen = ref(false)
+
+const pageTitle = computed(() => {
+  const match = navItems.find((item) =>
+    item.path === '/' ? route.path === '/' : route.path.startsWith(item.path)
+  )
+  return match?.label ?? 'Budget'
+})
 
 const navItems = [
   { path: '/', icon: 'pi pi-objects-column', label: 'Dashboard' },
@@ -41,14 +48,22 @@ const exitContext = async (): Promise<void> => {
   <header class="mobile-topbar">
     <div class="mobile-topbar-brand">
       <div class="mobile-topbar-logo">B</div>
-      <span class="mobile-topbar-title">Budget</span>
+      <span class="mobile-topbar-title">{{ pageTitle }}</span>
     </div>
     <div class="mobile-topbar-actions">
       <button class="mobile-topbar-btn" @click="uiStore.toggleTheme()">
         <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
       </button>
-      <button class="mobile-topbar-btn" @click="toggleSidebar">
-        <i class="pi pi-bars" />
+      <button class="mobile-topbar-avatar" @click="toggleSidebar">
+        <img
+          v-if="user?.user_metadata?.avatar_url"
+          :src="user.user_metadata.avatar_url"
+          class="mobile-topbar-avatar-img"
+          alt="Profile"
+        />
+        <span v-else class="mobile-topbar-avatar-initials">
+          {{ (user?.user_metadata?.full_name || user?.email || 'U').charAt(0).toUpperCase() }}
+        </span>
       </button>
     </div>
   </header>
@@ -157,7 +172,7 @@ const exitContext = async (): Promise<void> => {
         :key="item.path"
         :to="item.path"
         class="mobile-tab"
-        :class="{ 'mobile-tab-active': route.path === item.path }"
+        :class="{ 'mobile-tab-active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)) }"
         @click="closeSidebar"
       >
         <div class="mobile-tab-icon-wrap">
@@ -169,7 +184,6 @@ const exitContext = async (): Promise<void> => {
             {{ collabStore.pendingInvitesCount }}
           </span>
         </div>
-        {{ item.label }}
       </RouterLink>
     </div>
   </nav>
@@ -397,5 +411,44 @@ const exitContext = async (): Promise<void> => {
 .context-strip-exit:hover {
   background: var(--app-accent);
   color: var(--app-accent-text);
+}
+
+/* ─── Mobile avatar button ───────────────────────────────────────────────── */
+.mobile-topbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--app-border-strong);
+  background: var(--app-surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.mobile-topbar-avatar:hover {
+  border-color: var(--app-accent);
+}
+
+.mobile-topbar-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-topbar-avatar-initials {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* ─── Sidebar transition ─────────────────────────────────────────────────── */
+.sidebar {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 </style>
