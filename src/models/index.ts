@@ -21,6 +21,7 @@ export interface ProjectionInputs {
   months: number
   expenseItems: ExpenseItem[]
   monthlyAdjustments: MonthAdjustment[]
+  savingsAdjustments?: MonthAdjustment[]   // system-generated, separate from user adjustments
 }
 
 export interface ProjectionScenario {
@@ -43,8 +44,9 @@ export interface ProjectionRow {
   expenses: number
   net: number
   cumulativeBalance: number
-  incomeAdjustment: number
-  expenseAdjustment: number
+  incomeAdjustment: number       // user one-time adjustment only
+  expenseAdjustment: number      // user one-time adjustment only
+  savingsContribution: number    // savings goals contribution this month
   adjustmentNote?: string
 }
 

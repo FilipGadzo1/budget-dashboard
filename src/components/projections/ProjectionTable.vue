@@ -59,6 +59,8 @@ const clearAdjustment = (monthKey: string): void => {
 
 const isAdjusted = (row: ProjectionRow): boolean =>
   row.incomeAdjustment !== 0 || row.expenseAdjustment !== 0
+
+const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 </script>
 
 <template>
@@ -100,7 +102,12 @@ const isAdjusted = (row: ProjectionRow): boolean =>
             <!-- Month -->
             <td class="ptable-month-cell">
               <span class="ptable-month-name">{{ row.monthLabel }}</span>
-              <span v-if="isAdjusted(row)" class="ptable-adj-badge" title="Has one-time adjustment" />
+              <div class="ptable-month-badges">
+                <span v-if="isAdjusted(row)" class="ptable-adj-badge" title="Has one-time adjustment" />
+                <span v-if="hasSavings(row)" class="ptable-savings-badge" title="Savings contribution active">
+                  <i class="pi pi-wallet" />
+                </span>
+              </div>
             </td>
 
             <!-- Income -->
@@ -120,6 +127,9 @@ const isAdjusted = (row: ProjectionRow): boolean =>
                 v-if="row.expenseAdjustment !== 0"
                 class="ptable-delta ptable-delta-neg"
               >+{{ formatCurrency(row.expenseAdjustment) }}</span>
+              <span v-if="hasSavings(row)" class="ptable-savings-line">
+                <i class="pi pi-wallet" />{{ formatCurrency(row.savingsContribution) }}
+              </span>
             </td>
 
             <!-- Net -->
@@ -326,12 +336,20 @@ const isAdjusted = (row: ProjectionRow): boolean =>
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  vertical-align: middle;
 }
 
 .ptable-month-name {
   font-weight: 500;
   color: var(--app-text);
   font-size: 0.8125rem;
+}
+
+.ptable-month-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .ptable-adj-badge {
@@ -343,12 +361,32 @@ const isAdjusted = (row: ProjectionRow): boolean =>
   flex-shrink: 0;
 }
 
+.ptable-savings-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.575rem;
+  color: var(--app-negative);
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.ptable-savings-line {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-negative);
+  opacity: 0.65;
+  margin-top: 2px;
+}
+
 /* ─── Number cells ────────────────────────────────────────────── */
 .ptable-num-cell {
   padding: 0.875rem 1rem;
   text-align: right;
   white-space: nowrap;
-  vertical-align: middle;
+  vertical-align: top;
+  padding-top: 0.9375rem;
 }
 
 .ptable-num {

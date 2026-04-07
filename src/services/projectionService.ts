@@ -20,14 +20,17 @@ export const buildProjectionRows = (
     ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
     : inputs.monthlyExpenses
   const adjustments = inputs.monthlyAdjustments ?? []
+  const savingsAdjs = inputs.savingsAdjustments ?? []
   let runningBalance = 0
 
   return Array.from({ length: inputs.months }, (_, index) => {
     const currentDate = addMonths(startDate, index)
     const monthKey = toMonthKey(currentDate)
     const adj = adjustments.find((a) => a.monthKey === monthKey)
+    const savAdj = savingsAdjs.find((a) => a.monthKey === monthKey)
+    const savingsContribution = savAdj?.expenseAdjustment ?? 0
     const rowIncome = inputs.monthlyIncome + (adj?.incomeAdjustment ?? 0)
-    const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0)
+    const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0) + savingsContribution
     const rowNet = rowIncome - rowExpenses
     runningBalance += rowNet
 
@@ -40,6 +43,7 @@ export const buildProjectionRows = (
       cumulativeBalance: runningBalance,
       incomeAdjustment: adj?.incomeAdjustment ?? 0,
       expenseAdjustment: adj?.expenseAdjustment ?? 0,
+      savingsContribution,
       adjustmentNote: adj?.note,
     }
   })

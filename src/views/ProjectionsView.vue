@@ -19,7 +19,7 @@ import {
   buildProjectionSummary,
   buildProjectionMilestones,
 } from '@/services/projectionService'
-import { mergeDepositsIntoAdjustments } from '@/services/savingsProjectionService'
+import { buildSavingsContributionAdjustments, mergeDepositsIntoAdjustments } from '@/services/savingsProjectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
@@ -56,29 +56,21 @@ const collabStore = useCollaborationStore()
 const { currencyCode, formatCurrency, formatCompactCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
 
 const effectiveInputs = computed((): ProjectionInputs => {
-  const savings = savingsStore.totalMonthlyContributions
   const allDeposits = Object.values(savingsStore.deposits).flat()
   const base = projectionStore.inputs
 
   const mergedAdjustments = mergeDepositsIntoAdjustments(base.monthlyAdjustments, allDeposits)
-  const adjustmentsChanged = mergedAdjustments !== base.monthlyAdjustments
+  const savingsAdjustments = buildSavingsContributionAdjustments(
+    savingsStore.goals,
+    selectedMonth.value,
+    base.months,
+  )
 
-  if (savings === 0) {
-    return adjustmentsChanged ? { ...base, monthlyAdjustments: mergedAdjustments } : base
+  return {
+    ...base,
+    monthlyAdjustments: mergedAdjustments,
+    savingsAdjustments,
   }
-
-  if (base.expenseItems.length > 0) {
-    return {
-      ...base,
-      expenseItems: [
-        ...base.expenseItems,
-        { id: '__savings__', name: 'Savings contributions', amount: savings, sortOrder: 9999 },
-      ],
-      monthlyAdjustments: mergedAdjustments,
-    }
-  }
-
-  return { ...base, monthlyExpenses: base.monthlyExpenses + savings, monthlyAdjustments: mergedAdjustments }
 })
 
 const form = reactive({

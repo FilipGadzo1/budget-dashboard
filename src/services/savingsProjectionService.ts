@@ -1,4 +1,4 @@
-import type { MonthAdjustment, SavingsDeposit } from '@/models'
+import type { MonthAdjustment, SavingsDeposit, SavingsGoal } from '@/models'
 
 /**
  * Merges deposit amounts into monthly adjustments as additional expense deductions
@@ -40,4 +40,38 @@ export function mergeDepositsIntoAdjustments(
   })
 
   return updated
+}
+
+/**
+ * Builds a list of per-month savings contribution adjustments for active goals.
+ * Only generates entries for months where at least one goal is still active
+ * (status === 'active' AND targetDate is null or >= that month).
+ * Returns an empty array if no goals are active.
+ */
+export function buildSavingsContributionAdjustments(
+  goals: SavingsGoal[],
+  startMonth: string,
+  months: number,
+): MonthAdjustment[] {
+  const activeGoals = goals.filter((g) => g.status === 'active' && g.monthlyContribution > 0)
+  if (activeGoals.length === 0) return []
+
+  const result: MonthAdjustment[] = []
+  for (let i = 0; i < months; i++) {
+    const d = new Date(`${startMonth}-01`)
+    d.setMonth(d.getMonth() + i, 1)
+    const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const total = activeGoals
+      .filter((g) => !g.targetDate || g.targetDate.slice(0, 7) >= mk)
+      .reduce((sum, g) => sum + g.monthlyContribution, 0)
+    if (total > 0) {
+      result.push({
+        id: `__savings_contribution__${mk}`,
+        monthKey: mk,
+        incomeAdjustment: 0,
+        expenseAdjustment: total,
+      })
+    }
+  }
+  return result
 }

@@ -9,8 +9,8 @@ import {
   buildProjectionMilestones,
   buildProjectionRows,
   buildProjectionSummary,
-  calculateBreakEvenGap,
 } from '@/services/projectionService'
+import { buildSavingsContributionAdjustments } from '@/services/savingsProjectionService'
 import type { ProjectionInputs } from '@/models'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
@@ -22,21 +22,16 @@ const savingsStore = useSavingsStore()
 const uiStore = useUiStore()
 const { formatCurrency, formatCompactCurrency, locale, selectedMonth } = useCurrency()
 
-// Effective inputs — savings contributions merged as additional expense
+// Effective inputs — savings contributions tracked separately so the table
+// can display them distinctly from user one-time adjustments
 const effectiveInputs = computed((): ProjectionInputs => {
-  const savings = savingsStore.totalMonthlyContributions
-  if (savings === 0) return projectionStore.inputs
   const base = projectionStore.inputs
-  if (base.expenseItems.length > 0) {
-    return {
-      ...base,
-      expenseItems: [
-        ...base.expenseItems,
-        { id: '__savings__', name: 'Savings contributions', amount: savings, sortOrder: 9999 },
-      ],
-    }
-  }
-  return { ...base, monthlyExpenses: base.monthlyExpenses + savings }
+  const savingsAdjustments = buildSavingsContributionAdjustments(
+    savingsStore.goals,
+    selectedMonth.value,
+    base.months,
+  )
+  return { ...base, savingsAdjustments }
 })
 
 const projectionRows = computed(() =>
@@ -44,8 +39,9 @@ const projectionRows = computed(() =>
 )
 const summary = computed(() => buildProjectionSummary(projectionRows.value))
 const milestones = computed(() => buildProjectionMilestones(projectionRows.value))
-const monthlyNet = computed(() => effectiveInputs.value.monthlyIncome - effectiveInputs.value.monthlyExpenses)
-const breakEvenGap = computed(() => calculateBreakEvenGap(effectiveInputs.value))
+// Use first row's net so it reflects the actual per-month savings contribution
+const monthlyNet = computed(() => projectionRows.value[0]?.net ?? 0)
+const breakEvenGap = computed(() => Math.max(-monthlyNet.value, 0))
 
 const statusPill = computed(() => {
   const noData = projectionStore.inputs.monthlyIncome === 0 && effectiveInputs.value.monthlyExpenses === 0
