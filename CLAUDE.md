@@ -50,9 +50,9 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 4. Both stores debounce-write to Supabase but only after `isReady` is true (set by `hydrate()`) to avoid overwriting DB with defaults on startup
 
 **Key domain types** (`src/models/index.ts`):
-- `ProjectionInputs` — the three editable numbers (income, expenses, months)
+- `ProjectionInputs` — income, expenses, months, `expenseItems[]`, `monthlyAdjustments[]`, and `savingsAdjustments[]` (see Savings section below)
 - `ProjectionScenario` — named snapshot of inputs; stored in DB
-- `ProjectionRow` — one derived month of the table; never stored
+- `ProjectionRow` — one derived month of the table; never stored. Fields include `incomeAdjustment`, `expenseAdjustment` (user one-time only), and `savingsContribution` (savings goals portion, kept separate)
 - `UiStateSnapshot` — theme, locale, currency, start month; stored in `profiles` table
 
 **Computation is pure and stateless** — `src/services/projectionService.ts` takes inputs and returns rows, summary, milestones, SVG trend path, and share text. Nothing in services touches stores or Supabase.
@@ -63,15 +63,27 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `startRealtime(ownerId)` subscribes to a single Supabase channel `budget:{ownerId}` covering `projection_inputs`, `scenarios`, `expense_items`, and `collaborations` tables via `postgres_changes`, plus a `Broadcast` channel for profile updates
 - **Important:** profile currency/locale updates use Broadcast (not `postgres_changes`) because cross-table RLS makes `postgres_changes` on `profiles` unreliable for collaborators. The owner calls `broadcastProfileUpdate()` after saving; collaborators receive `profile_updated` events and update `activeBudgetContext`
 
+**Savings architecture** (`src/stores/savings.ts`, `src/services/savingsProjectionService.ts`):
+- `SavingsGoal` has `monthlyContribution` and `targetDate` (nullable ISO date). Goals with `status === 'active'` contribute to monthly expenses.
+- Savings contributions are tracked in `ProjectionInputs.savingsAdjustments` — a **separate** array from `monthlyAdjustments` (user one-time adjustments). This separation lets the table display them with distinct styling.
+- `buildSavingsContributionAdjustments(goals, startMonth, months)` generates positive `expenseAdjustment` entries **only for months where each goal is still active** (respects `targetDate`). Months after a goal ends simply have no entry — expenses drop naturally.
+- `mergeDepositsIntoAdjustments(existing, deposits)` merges one-time deposits into `monthlyAdjustments` as extra expense for their specific month.
+- In views, `effectiveInputs` computes both `monthlyAdjustments` (deposits merged) and `savingsAdjustments` (contribution schedule) and returns them as separate fields on `ProjectionInputs`.
+- In `ProjectionTable`, `row.savingsContribution > 0` shows a red wallet sub-line in the Expenses cell and a wallet badge in the Month cell. This is visually distinct from the amber badge/delta used for user one-time adjustments (`row.expenseAdjustment !== 0`).
+
 **ProjectionsView form sync pattern:**
 `ProjectionsView.vue` initialises a local `form` reactive object from the store on setup. A `watch(() => projectionStore.inputs, ...)` keeps the form in sync when the store changes externally (scenario load, realtime update). Without this watch, loading a scenario would not update the visible form fields.
 
 **Component structure:**
 - `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages
 - `src/components/shared/` — reusable UI: `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
-- `src/components/dashboard/` — `TrendChart`, `MilestonesCard`
+- `src/components/dashboard/` — `TrendChart` (cumulative line + monthly income-vs-expenses bar toggle), `MilestonesCard`
 - `src/components/projections/` — `ProjectionTable`, `ExpensesDialog`
 - `src/components/scenarios/` — `ScenarioCard`
+
+**Page layouts:**
+- `DashboardView` — header + summary strip + 2-column grid (`1.5fr / 1fr`): TrendChart left, insights + MilestonesCard right. Mobile stacks to 1 column.
+- `ProjectionsView` — header + summary strip + 2-column grid (`280px / 1fr`): sticky config panel left (income/expenses inputs + settings), full-width `ProjectionTable` right. Mobile stacks to 1 column.
 
 **CSS / styling:**
 - Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`)
@@ -81,7 +93,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **CurrencyInput** (`src/components/shared/CurrencyInput.vue`) wraps PrimeVue `InputNumber` with a currency symbol addon. It enforces `min="0"` but has no upper bound — validation limits are enforced by the Yup schema in `src/validation/forms.ts`, which fires via the `syncProjection()` watcher in `ProjectionsView`.
 
-**ExpensesDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. Closing via Escape or the Cancel button discards unsaved changes.
+**ExpensesDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. Closing via Escape or the Cancel button discards unsaved changes. The dialog has a fixed height via `:style` + PrimeVue PassThrough (`:pt`) to make the content area a flex column — do **not** use scoped `:deep()` CSS to target PrimeVue Dialog internals, as Dialog teleports to `<body>` and scoped styles won't reach it.
 
 **Exchange rates** (`useExchangeRates`) — module-level singleton, fetches from jsDelivr CDN with Cloudflare Pages fallback, 1-hour cache TTL. Returns rates relative to EUR; `convert()` cross-multiplies via EUR.
 
