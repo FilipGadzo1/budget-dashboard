@@ -56,109 +56,420 @@ const clearAdjustment = (monthKey: string): void => {
   emit('update:adjustments', props.adjustments.filter((a) => a.monthKey !== monthKey))
   expandedMonthKey.value = null
 }
+
+const isAdjusted = (row: ProjectionRow): boolean =>
+  row.incomeAdjustment !== 0 || row.expenseAdjustment !== 0
 </script>
 
 <template>
-  <div class="mt-6 overflow-x-auto rounded-lg border border-app">
-    <table class="data-table">
-      <thead>
+  <div class="ptable-scroll">
+    <table class="ptable">
+      <thead class="ptable-head">
         <tr>
-          <th>Month</th>
-          <th>Income</th>
-          <th>Expenses</th>
-          <th>Net</th>
-          <th>Cumulative Balance</th>
-          <th v-if="!readonly" class="w-8" />
+          <th class="ptable-th-accent" />
+          <th class="ptable-th ptable-th-month">Month</th>
+          <th class="ptable-th ptable-th-num">Income</th>
+          <th class="ptable-th ptable-th-num">Expenses</th>
+          <th class="ptable-th ptable-th-num">Net</th>
+          <th class="ptable-th ptable-th-num">Balance</th>
+          <th v-if="!readonly" class="ptable-th ptable-th-action" />
         </tr>
       </thead>
       <tbody>
         <template v-for="row in rows" :key="row.monthKey">
+
+          <!-- ── Main row ──────────────────────────────────────── -->
           <tr
-            :class="{ 'cursor-pointer select-none hover:bg-[var(--app-surface-hover)]': !readonly }"
+            class="ptable-row"
+            :class="{
+              'ptable-row-interactive': !readonly,
+              'ptable-row-open': expandedMonthKey === row.monthKey,
+            }"
             @click="!readonly && toggleExpand(row.monthKey)"
           >
-            <td class="font-medium">
-              <span class="flex items-center gap-2">
-                {{ row.monthLabel }}
-                <span
-                  v-if="row.incomeAdjustment !== 0 || row.expenseAdjustment !== 0"
-                  class="status-pill status-pill-warning py-0 px-1.5 text-xs leading-4"
-                >adj</span>
-              </span>
+            <!-- Left accent bar -->
+            <td
+              class="ptable-accent"
+              :class="{
+                'ptable-accent-pos': !isAdjusted(row) && row.net > 0,
+                'ptable-accent-neg': !isAdjusted(row) && row.net < 0,
+                'ptable-accent-adj': isAdjusted(row),
+              }"
+            />
+
+            <!-- Month -->
+            <td class="ptable-month-cell">
+              <span class="ptable-month-name">{{ row.monthLabel }}</span>
+              <span v-if="isAdjusted(row)" class="ptable-adj-badge" title="Has one-time adjustment" />
             </td>
-            <td class="tabular-nums">
-              {{ formatCurrency(row.income) }}
+
+            <!-- Income -->
+            <td class="ptable-num-cell">
+              <span class="ptable-num">{{ formatCurrency(row.income) }}</span>
               <span
                 v-if="row.incomeAdjustment !== 0"
-                class="ml-1 text-xs"
-                :class="row.incomeAdjustment > 0 ? 'text-positive' : 'text-negative'"
+                class="ptable-delta"
+                :class="row.incomeAdjustment > 0 ? 'ptable-delta-pos' : 'ptable-delta-neg'"
               >{{ row.incomeAdjustment > 0 ? '+' : '' }}{{ formatCurrency(row.incomeAdjustment) }}</span>
             </td>
-            <td class="tabular-nums">
-              {{ formatCurrency(row.expenses) }}
+
+            <!-- Expenses -->
+            <td class="ptable-num-cell">
+              <span class="ptable-num">{{ formatCurrency(row.expenses) }}</span>
               <span
                 v-if="row.expenseAdjustment !== 0"
-                class="ml-1 text-xs text-negative"
+                class="ptable-delta ptable-delta-neg"
               >+{{ formatCurrency(row.expenseAdjustment) }}</span>
             </td>
-            <td class="tabular-nums" :class="row.net >= 0 ? 'text-positive' : 'text-negative'">{{ formatCurrency(row.net) }}</td>
-            <td class="tabular-nums" :class="row.cumulativeBalance >= 0 ? '' : 'text-negative'">{{ formatCurrency(row.cumulativeBalance) }}</td>
-            <td v-if="!readonly" class="w-8 text-right">
+
+            <!-- Net -->
+            <td class="ptable-num-cell">
+              <span
+                class="ptable-net"
+                :class="row.net >= 0 ? 'ptable-net-pos' : 'ptable-net-neg'"
+              >{{ row.net >= 0 ? '+' : '' }}{{ formatCurrency(row.net) }}</span>
+            </td>
+
+            <!-- Cumulative balance -->
+            <td class="ptable-num-cell">
+              <span
+                class="ptable-num"
+                :class="row.cumulativeBalance < 0 ? 'ptable-bal-neg' : ''"
+              >{{ formatCurrency(row.cumulativeBalance) }}</span>
+            </td>
+
+            <!-- Chevron -->
+            <td v-if="!readonly" class="ptable-chevron-cell">
               <i
-                class="pi text-xs text-secondary transition-transform duration-150"
+                class="pi ptable-chevron"
                 :class="expandedMonthKey === row.monthKey ? 'pi-chevron-up' : 'pi-chevron-down'"
               />
             </td>
           </tr>
 
+          <!-- ── Expanded adjustment panel ─────────────────────── -->
           <tr
             v-if="expandedMonthKey === row.monthKey && !readonly"
-            class="bg-[var(--app-surface-hover)]"
+            class="ptable-expand-row"
           >
-            <td colspan="6" class="px-4 py-3">
-              <div class="flex flex-wrap items-end gap-3">
-                <div>
-                  <label class="form-label">Extra income</label>
-                  <InputNumber
-                    v-model="draft.incomeAdjustment"
-                    :min-fraction-digits="0"
-                    :max-fraction-digits="2"
-                    mode="decimal"
-                    :use-grouping="true"
-                    fluid
-                    @click.stop
-                  />
+            <td :colspan="readonly ? 6 : 7" class="ptable-expand-cell">
+              <div class="ptable-panel">
+                <p class="ptable-panel-title">
+                  Adjust <strong>{{ row.monthLabel }}</strong>
+                  <span class="ptable-panel-hint">— one-time income or expense change</span>
+                </p>
+                <div class="ptable-panel-fields">
+                  <div class="ptable-panel-field">
+                    <label class="form-label">Extra income</label>
+                    <InputNumber
+                      v-model="draft.incomeAdjustment"
+                      :min-fraction-digits="0"
+                      :max-fraction-digits="2"
+                      mode="decimal"
+                      :use-grouping="true"
+                      fluid
+                      @click.stop
+                    />
+                  </div>
+                  <div class="ptable-panel-field">
+                    <label class="form-label">Extra expense</label>
+                    <InputNumber
+                      v-model="draft.expenseAdjustment"
+                      :min-fraction-digits="0"
+                      :max-fraction-digits="2"
+                      mode="decimal"
+                      :use-grouping="true"
+                      fluid
+                      @click.stop
+                    />
+                  </div>
+                  <div class="ptable-panel-field ptable-panel-field-note">
+                    <label class="form-label">Note <span class="ptable-panel-optional">(optional)</span></label>
+                    <InputText
+                      v-model="draft.note"
+                      placeholder="e.g. Annual bonus"
+                      fluid
+                      @click.stop
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label class="form-label">Extra expense</label>
-                  <InputNumber
-                    v-model="draft.expenseAdjustment"
-                    :min-fraction-digits="0"
-                    :max-fraction-digits="2"
-                    mode="decimal"
-                    :use-grouping="true"
-                    fluid
-                    @click.stop
-                  />
-                </div>
-                <div class="min-w-32 flex-1">
-                  <label class="form-label">Note (optional)</label>
-                  <InputText v-model="draft.note" placeholder="e.g. Annual bonus" fluid @click.stop />
-                </div>
-                <div class="flex shrink-0 gap-2" @click.stop>
-                  <button class="btn btn-primary btn-sm" @click="saveAdjustment(row.monthKey)">Save</button>
+                <div class="ptable-panel-actions" @click.stop>
+                  <button class="btn btn-primary btn-sm" @click="saveAdjustment(row.monthKey)">
+                    Save
+                  </button>
                   <button
-                    v-if="row.incomeAdjustment !== 0 || row.expenseAdjustment !== 0"
+                    v-if="isAdjusted(row)"
                     class="btn btn-danger btn-sm"
                     @click="clearAdjustment(row.monthKey)"
-                  >Clear</button>
-                  <button class="btn btn-secondary btn-sm" @click="expandedMonthKey = null">Cancel</button>
+                  >
+                    Clear
+                  </button>
+                  <button
+                    class="btn btn-secondary btn-sm"
+                    @click.stop="expandedMonthKey = null"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             </td>
           </tr>
+
         </template>
       </tbody>
     </table>
   </div>
 </template>
+
+<style scoped>
+/* ─── Scroll wrapper ──────────────────────────────────────────── */
+.ptable-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Table base ──────────────────────────────────────────────── */
+.ptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+/* ─── Header ──────────────────────────────────────────────────── */
+.ptable-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--app-surface);
+}
+
+.ptable-head tr {
+  border-bottom: 2px solid var(--app-border);
+}
+
+.ptable-th-accent {
+  width: 4px;
+  padding: 0;
+}
+
+.ptable-th {
+  padding: 0.6875rem 1rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+
+.ptable-th-month {
+  text-align: left;
+  padding-left: 0.75rem;
+}
+
+.ptable-th-num {
+  text-align: right;
+}
+
+.ptable-th-action {
+  width: 2.5rem;
+}
+
+/* ─── Body rows ───────────────────────────────────────────────── */
+.ptable-row {
+  border-bottom: 1px solid var(--app-border);
+  transition: background 0.1s ease;
+}
+
+.ptable-row:last-child {
+  border-bottom: none;
+}
+
+.ptable-row-interactive {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ptable-row-interactive:hover {
+  background: var(--app-surface-hover);
+}
+
+.ptable-row-open {
+  background: var(--app-surface-hover);
+}
+
+/* ─── Left accent bar ─────────────────────────────────────────── */
+.ptable-accent {
+  width: 4px;
+  padding: 0;
+  border-right: none;
+}
+
+.ptable-accent-pos {
+  background: var(--app-positive);
+  opacity: 0.7;
+}
+
+.ptable-accent-neg {
+  background: var(--app-negative);
+  opacity: 0.7;
+}
+
+.ptable-accent-adj {
+  background: var(--app-warning, #f59e0b);
+}
+
+/* ─── Month cell ──────────────────────────────────────────────── */
+.ptable-month-cell {
+  padding: 0.875rem 0.75rem 0.875rem 0.75rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ptable-month-name {
+  font-weight: 500;
+  color: var(--app-text);
+  font-size: 0.8125rem;
+}
+
+.ptable-adj-badge {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-warning, #f59e0b);
+  flex-shrink: 0;
+}
+
+/* ─── Number cells ────────────────────────────────────────────── */
+.ptable-num-cell {
+  padding: 0.875rem 1rem;
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.ptable-num {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.8125rem;
+  color: var(--app-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ptable-delta {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
+}
+
+.ptable-delta-pos { color: var(--app-positive); }
+.ptable-delta-neg { color: var(--app-negative); }
+
+.ptable-net {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ptable-net-pos { color: var(--app-positive); }
+.ptable-net-neg { color: var(--app-negative); }
+
+.ptable-bal-neg {
+  color: var(--app-negative);
+}
+
+/* ─── Chevron ─────────────────────────────────────────────────── */
+.ptable-chevron-cell {
+  padding: 0.875rem 0.875rem 0.875rem 0;
+  text-align: right;
+  width: 2.5rem;
+}
+
+.ptable-chevron {
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+  transition: transform 0.18s ease;
+}
+
+/* ─── Expanded panel ──────────────────────────────────────────── */
+.ptable-expand-row {
+  background: var(--app-surface-hover);
+}
+
+.ptable-expand-cell {
+  padding: 0;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.ptable-panel {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  border-top: 1px solid var(--app-border);
+}
+
+.ptable-panel-title {
+  font-size: 0.8125rem;
+  color: var(--app-text);
+  margin: 0;
+}
+
+.ptable-panel-hint {
+  font-weight: 400;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
+.ptable-panel-optional {
+  font-weight: 400;
+  color: var(--app-text-secondary);
+}
+
+.ptable-panel-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.ptable-panel-field {
+  min-width: 140px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.ptable-panel-field-note {
+  min-width: 200px;
+  flex: 2;
+}
+
+.ptable-panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ─── Mobile ──────────────────────────────────────────────────── */
+@media (max-width: 1023px) {
+  .ptable-month-cell {
+    padding: 0.75rem 0.625rem 0.75rem 0.625rem;
+  }
+
+  .ptable-num-cell {
+    padding: 0.75rem 0.75rem;
+  }
+
+  .ptable-chevron-cell {
+    padding: 0.75rem 0.625rem 0.75rem 0;
+  }
+}
+</style>

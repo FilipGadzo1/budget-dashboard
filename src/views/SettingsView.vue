@@ -10,6 +10,7 @@ const currencyOptions = [
   { value: 'USD', label: 'US Dollar (USD)' },
   { value: 'GBP', label: 'British Pound (GBP)' },
   { value: 'SEK', label: 'Swedish Krona (SEK)' },
+  { value: 'AED', label: 'UAE Dirham (AED)' },
 ]
 
 const localeOptions = [

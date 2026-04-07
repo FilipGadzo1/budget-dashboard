@@ -31,6 +31,7 @@ const currencyOptions = [
   { value: 'EUR', label: 'Euro (EUR)' },
   { value: 'USD', label: 'US Dollar (USD)' },
   { value: 'GBP', label: 'British Pound (GBP)' },
+  { value: 'AED', label: 'UAE Dirham (AED)' },
 ]
 
 const localeOptions = [
@@ -52,11 +53,8 @@ const projectionStore = useProjectionStore()
 const savingsStore = useSavingsStore()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
-const { currencyCode, formatCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
+const { currencyCode, formatCurrency, formatCompactCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
 
-// Effective inputs include monthly savings contributions as an additional expense.
-// When expense items are active, buildProjectionRows ignores monthlyExpenses and uses
-// expenseItems sum instead — so we inject savings as a synthetic item in that case.
 const effectiveInputs = computed((): ProjectionInputs => {
   const savings = savingsStore.totalMonthlyContributions
   const allDeposits = Object.values(savingsStore.deposits).flat()
@@ -89,7 +87,6 @@ const form = reactive({
   months: projectionStore.inputs.months,
 })
 const formErrors = reactive<Record<string, string>>({})
-const showTable = ref(false)
 
 const expenseItems = computed(() => projectionStore.inputs.expenseItems)
 const hasExpenseItems = computed(() => expenseItems.value.length > 0)
@@ -142,9 +139,6 @@ const selectedCurrencyCode = computed({
       ...item,
       amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
     }))
-    // Update the store with converted income/expenses BEFORE setExpenseItems, so the
-    // deep watcher on projectionStore.inputs doesn't reset the form back to old values
-    // when expense items change triggers it.
     projectionStore.setInputs({
       monthlyIncome: convertedIncome,
       monthlyExpenses: convertedExpenses,
@@ -171,7 +165,6 @@ const selectedMonth = computed({
   get: () => sharedSelectedMonth.value,
   set: (val: string) => {
     if (collabStore.isViewingSharedBudget) {
-      // Editor changing start month: update shared context and broadcast to all viewers
       collabStore.updateSharedSelectedMonth(val)
     } else {
       uiStore.setSelectedMonth(val)
@@ -218,7 +211,6 @@ const shareSummary = computed(() =>
   }),
 )
 
-// Sync form when the store changes from an external source (scenario load, realtime)
 watch(() => projectionStore.inputs, (inputs) => {
   if (form.monthlyIncome !== inputs.monthlyIncome) form.monthlyIncome = inputs.monthlyIncome
   if (form.monthlyExpenses !== inputs.monthlyExpenses) form.monthlyExpenses = inputs.monthlyExpenses
@@ -261,62 +253,74 @@ const downloadShareSummary = (): void => {
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Projections</h1>
-      <p class="page-description">Configure your monthly income and expenses to see the projected balance over time.</p>
-    </div>
+  <div class="proj-page">
 
-    <!-- Settings row -->
-    <div class="card mb-6">
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div>
-          <label class="form-label" for="start-month">Start month</label>
-          <input id="start-month" v-model="selectedMonth" class="form-select" type="month" :disabled="collabStore.isReadOnly" />
-        </div>
-        <div>
-          <label class="form-label" for="currency-code">Currency</label>
-          <div class="flex items-center gap-2">
-            <select id="currency-code" v-model="selectedCurrencyCode" class="form-select flex-1" :disabled="collabStore.isViewingSharedBudget" :title="collabStore.isViewingSharedBudget ? 'Currency is set by the budget owner' : undefined">
-              <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-            <button class="btn btn-ghost btn-icon" title="Exchange rates" @click="showExchangeDialog = true">
-              <i class="pi pi-arrows-h" />
-            </button>
-          </div>
-        </div>
-        <div>
-          <label class="form-label" for="locale-code">Locale</label>
-          <select id="locale-code" v-model="selectedLocale" class="form-select" :disabled="collabStore.isViewingSharedBudget" :title="collabStore.isViewingSharedBudget ? 'Locale is set by the budget owner' : undefined">
-            <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-        </div>
+    <!-- ── Page header ────────────────────────────────────────────── -->
+    <div class="proj-header">
+      <div>
+        <h1 class="page-title">Projections</h1>
+        <p class="proj-subtitle">
+          {{ projectionRows[0]?.monthLabel ?? '—' }} → {{ projectionRows.at(-1)?.monthLabel ?? '—' }} · {{ form.months }} months
+        </p>
+      </div>
+      <div class="proj-header-actions">
+        <span v-if="collabStore.isReadOnly" class="status-pill status-pill-warning proj-readonly-pill">
+          <i class="pi pi-eye text-xs" /> View only
+        </span>
+        <button class="btn btn-ghost btn-icon" title="Copy summary" @click="copyShareSummary">
+          <i class="pi pi-copy" />
+        </button>
+        <button class="btn btn-ghost btn-icon" title="Download .txt" @click="downloadShareSummary">
+          <i class="pi pi-download" />
+        </button>
       </div>
     </div>
 
-    <!-- Inputs -->
-    <div class="card mb-6">
-      <div class="mb-4 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <p class="text-label">Monthly inputs</p>
-          <span v-if="collabStore.isReadOnly" class="status-pill status-pill-warning text-xs">
-            <i class="pi pi-eye text-xs" /> View only
+    <StatusMessage :message="shareState.message" :tone="shareState.tone" />
+
+    <!-- ── Summary strip ─────────────────────────────────────────── -->
+    <div class="card card-sm proj-summary">
+      <div class="proj-summary-items">
+        <div class="proj-summary-item">
+          <span class="proj-summary-label">Total Income</span>
+          <span class="proj-summary-value text-positive">{{ formatCompactCurrency(projectionSummary.totalIncome) }}</span>
+        </div>
+        <div class="proj-summary-sep" />
+        <div class="proj-summary-item">
+          <span class="proj-summary-label">Total Expenses</span>
+          <span class="proj-summary-value">{{ formatCompactCurrency(projectionSummary.totalExpenses) }}</span>
+        </div>
+        <div class="proj-summary-sep" />
+        <div class="proj-summary-item">
+          <span class="proj-summary-label">Monthly Net</span>
+          <span
+            class="proj-summary-value"
+            :class="projectionSummary.totalNet >= 0 ? 'text-positive' : 'text-negative'"
+          >
+            {{ formatCompactCurrency(projectionSummary.totalNet / Math.max(1, form.months)) }}/mo
           </span>
         </div>
-        <div class="flex gap-2">
-          <button v-if="hasExpenseItems" class="btn btn-secondary btn-sm" @click="openExpensesView">
-            <i class="pi pi-list text-xs" /> View items
-          </button>
-          <button v-if="hasExpenseItems && !collabStore.isReadOnly" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
-            <i class="pi pi-pencil text-xs" /> Edit items
-          </button>
-          <button v-if="!hasExpenseItems && !collabStore.isReadOnly" class="btn btn-secondary btn-sm" @click="openExpensesEdit">
-            <i class="pi pi-plus text-xs" /> Add expense items
-          </button>
+        <div class="proj-summary-sep" />
+        <div class="proj-summary-item">
+          <span class="proj-summary-label">Ending Balance</span>
+          <span
+            class="proj-summary-value"
+            :class="projectionSummary.endingBalance >= 0 ? 'text-positive' : 'text-negative'"
+          >
+            {{ formatCompactCurrency(projectionSummary.endingBalance) }}
+          </span>
         </div>
       </div>
-      <form class="grid gap-4 sm:grid-cols-3" @submit.prevent>
-        <div>
+    </div>
+
+    <!-- ── Main 2-col layout ────────────────────────────────────── -->
+    <div class="proj-main">
+
+      <!-- Left: config panel -->
+      <div class="card proj-config">
+
+        <!-- Money inputs -->
+        <div class="proj-money-field">
           <label class="form-label" for="monthly-income">Monthly income</label>
           <CurrencyInput
             input-id="monthly-income"
@@ -328,24 +332,36 @@ const downloadShareSummary = (): void => {
           />
           <p v-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
         </div>
-        <div>
-          <div class="form-label flex items-center gap-1">
-            <label for="monthly-expenses">Monthly expenses</label>
-            <span
-              class="relative inline-flex ml-1 p-1"
-              @touchstart.prevent="showExpensesHint = true"
-              @touchend="showExpensesHint = false"
-              @touchcancel="showExpensesHint = false"
-            >
-              <i
-                class="pi pi-info-circle cursor-default"
-                style="font-size: 0.625rem; color: var(--app-accent);"
-                v-tooltip.top="{ value: 'Enter a fixed monthly amount, or click &quot;Add expense items&quot; above to break it down into named line items. When items are active their sum overrides this field.', showDelay: 300 }"
-              />
-              <div v-if="showExpensesHint">
-                Enter a fixed monthly amount, or click "Add expense items" above to break it down into named line items. When items are active their sum overrides this field.
-              </div>
-            </span>
+
+        <div class="proj-money-field">
+          <div class="proj-exp-header">
+            <label class="form-label" for="monthly-expenses">Monthly expenses</label>
+            <div class="proj-exp-actions">
+              <button
+                v-if="hasExpenseItems"
+                class="proj-items-chip"
+                @click="openExpensesView"
+              >
+                <i class="pi pi-list text-xs" />
+                {{ expenseItems.length }} items
+              </button>
+              <button
+                v-if="hasExpenseItems && !collabStore.isReadOnly"
+                class="proj-items-chip proj-items-chip-icon"
+                title="Edit items"
+                @click="openExpensesEdit"
+              >
+                <i class="pi pi-pencil text-xs" />
+              </button>
+              <button
+                v-if="!hasExpenseItems && !collabStore.isReadOnly"
+                class="proj-items-chip"
+                @click="openExpensesEdit"
+              >
+                <i class="pi pi-plus text-xs" />
+                Itemize
+              </button>
+            </div>
           </div>
           <CurrencyInput
             input-id="monthly-expenses"
@@ -355,17 +371,34 @@ const downloadShareSummary = (): void => {
             :disabled="hasExpenseItems || collabStore.isReadOnly"
             :invalid="!!formErrors.monthlyExpenses"
           />
-          <p v-if="hasExpenseItems" class="mt-1 text-xs text-secondary">
-            Calculated from {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
-          </p>
-          <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
-          <p v-if="savingsStore.totalMonthlyContributions > 0" class="mt-1 text-xs" style="color: var(--app-accent);">
-            <i class="pi pi-wallet" style="font-size: 0.6rem;" />
-            +{{ formatCurrency(savingsStore.totalMonthlyContributions) }}/mo in savings contributions
-          </p>
+          <div class="proj-exp-meta">
+            <p v-if="hasExpenseItems" class="proj-meta-note">
+              Sum of {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
+            </p>
+            <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
+            <p v-if="savingsStore.totalMonthlyContributions > 0" class="proj-meta-savings">
+              <i class="pi pi-wallet" style="font-size: 0.6rem;" />
+              +{{ formatCurrency(savingsStore.totalMonthlyContributions) }}/mo savings included
+            </p>
+          </div>
         </div>
-        <div>
-          <label class="form-label" for="months">Months to project</label>
+
+        <div class="proj-config-divider" />
+
+        <!-- Settings -->
+        <div class="proj-field">
+          <label class="form-label" for="start-month">Start month</label>
+          <input
+            id="start-month"
+            v-model="selectedMonth"
+            type="month"
+            class="form-select"
+            :disabled="collabStore.isReadOnly"
+          />
+        </div>
+
+        <div class="proj-field">
+          <label class="form-label" for="months">Horizon (months)</label>
           <InputNumber
             id="months"
             v-model="form.months"
@@ -380,32 +413,42 @@ const downloadShareSummary = (): void => {
           />
           <p v-if="formErrors.months" class="form-error">{{ formErrors.months }}</p>
         </div>
-      </form>
-    </div>
 
-    <!-- Share & Table -->
-    <div class="card">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p class="text-label mb-1">Portable summary</p>
-          <p class="text-body">Copy or download a plain-text snapshot of the current projection.</p>
+        <div class="proj-field">
+          <label class="form-label" for="currency-code">Currency</label>
+          <div class="flex items-center gap-1.5">
+            <select
+              id="currency-code"
+              v-model="selectedCurrencyCode"
+              class="form-select flex-1"
+              :disabled="collabStore.isViewingSharedBudget"
+              :title="collabStore.isViewingSharedBudget ? 'Currency is set by the budget owner' : undefined"
+            >
+              <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <button class="btn btn-ghost btn-icon" title="Exchange rates" @click="showExchangeDialog = true">
+              <i class="pi pi-arrows-h" />
+            </button>
+          </div>
         </div>
-        <div class="flex flex-shrink-0 gap-2">
-          <button class="btn btn-primary btn-sm" @click="copyShareSummary">
-            <i class="pi pi-copy text-xs" /> Copy
-          </button>
-          <button class="btn btn-secondary btn-sm" @click="downloadShareSummary">
-            <i class="pi pi-download text-xs" /> Download
-          </button>
-          <button class="btn btn-secondary btn-sm" @click="showTable = !showTable">
-            {{ showTable ? 'Hide table' : 'Show table' }}
-          </button>
+
+        <div class="proj-field">
+          <label class="form-label" for="locale-code">Locale</label>
+          <select
+            id="locale-code"
+            v-model="selectedLocale"
+            class="form-select"
+            :disabled="collabStore.isViewingSharedBudget"
+            :title="collabStore.isViewingSharedBudget ? 'Locale is set by the budget owner' : undefined"
+          >
+            <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
         </div>
+
       </div>
 
-      <StatusMessage :message="shareState.message" :tone="shareState.tone" class="mt-3" />
-      <pre class="share-preview mt-4">{{ shareSummary }}</pre>
-      <div v-if="showTable" class="projection-table-wrap">
+      <!-- Right: projection table -->
+      <div class="proj-table-section">
         <ProjectionTable
           :rows="projectionRows"
           :format-currency="formatCurrency"
@@ -414,9 +457,10 @@ const downloadShareSummary = (): void => {
           @update:adjustments="onAdjustmentsUpdate"
         />
       </div>
+
     </div>
 
-    <!-- Expenses dialog -->
+    <!-- ── Dialogs ────────────────────────────────────────────────── -->
     <ExpensesDialog
       v-model:visible="showExpensesDialog"
       :initial-mode="expensesDialogMode"
@@ -426,7 +470,6 @@ const downloadShareSummary = (): void => {
       @update:model-value="onExpenseItemsUpdate"
     />
 
-    <!-- Exchange rates dialog -->
     <Dialog
       v-model:visible="showExchangeDialog"
       modal
@@ -452,15 +495,220 @@ const downloadShareSummary = (): void => {
 </template>
 
 <style scoped>
+/* ─── Page ────────────────────────────────────────────────────── */
+.proj-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.proj-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.proj-subtitle {
+  font-size: 0.8125rem;
+  color: var(--app-text-secondary);
+  margin: 0.2rem 0 0;
+}
+
+.proj-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+  padding-top: 0.25rem;
+}
+
+.proj-readonly-pill {
+  font-size: 0.6875rem;
+}
+
+/* ─── Summary strip ───────────────────────────────────────────── */
+.proj-summary-items {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.proj-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.25rem 1.5rem 0.25rem 0;
+  flex: 1;
+  min-width: 120px;
+}
+
+.proj-summary-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+
+.proj-summary-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--app-text);
+  font-family: 'DM Mono', monospace;
+  font-weight: 400;
+}
+
+.proj-summary-sep {
+  width: 1px;
+  height: 2.5rem;
+  background: var(--app-border);
+  margin: 0 1.5rem 0 0;
+  flex-shrink: 0;
+}
+
+/* ─── Main 2-col ──────────────────────────────────────────────── */
+.proj-main {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+/* ─── Config card ─────────────────────────────────────────────── */
+.proj-config {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.proj-config-divider {
+  height: 1px;
+  background: var(--app-border);
+  margin: 0 -1.25rem;
+}
+
+.proj-money-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.proj-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+/* Expense items header row */
+.proj-exp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+}
+
+.proj-exp-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.proj-items-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.725rem;
+  font-weight: 500;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+  border: 1px solid transparent;
+  border-radius: 100px;
+  padding: 0.1875rem 0.625rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.proj-items-chip:hover {
+  border-color: var(--app-accent);
+}
+
+.proj-items-chip-icon {
+  padding: 0.1875rem 0.5rem;
+}
+
+.proj-exp-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-height: 1rem;
+}
+
+.proj-meta-note {
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  margin: 0;
+}
+
+.proj-meta-savings {
+  font-size: 0.75rem;
+  color: var(--app-accent);
+  margin: 0;
+}
+
+/* ─── Table section ───────────────────────────────────────────── */
+.proj-table-section {
+  border-radius: 0.75rem;
+  border: 1px solid var(--app-border);
+  overflow: hidden;
+}
+
+/* ─── Mobile (≤ 1023px) ───────────────────────────────────────── */
 @media (max-width: 1023px) {
-  /* DM Mono for all number inputs */
   :deep(.p-inputnumber-input),
   :deep(.p-inputtext) {
     font-family: 'DM Mono', monospace !important;
   }
 
-  /* Ensure projection table scrolls horizontally */
-  .projection-table-wrap {
+  .proj-main {
+    grid-template-columns: 1fr;
+  }
+
+  .proj-config {
+    position: static;
+  }
+
+  .proj-config-divider {
+    margin: 0 -1rem;
+  }
+
+  .proj-summary-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .proj-summary-sep {
+    display: none;
+  }
+
+  .proj-summary-item {
+    padding: 0;
+    min-width: 0;
+  }
+
+  .proj-summary-value {
+    font-size: 1rem;
+  }
+
+  .proj-table-section {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
