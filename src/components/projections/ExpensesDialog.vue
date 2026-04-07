@@ -85,7 +85,11 @@ const removeItem = (index: number): void => {
     modal
     dismissable-mask
     :draggable="false"
-    :style="{ width: 'min(92vw, 32rem)' }"
+    :style="{ width: 'min(92vw, 32rem)', height: 'min(85vh, 34rem)' }"
+    :pt="{
+      root: { style: 'display: flex; flex-direction: column;' },
+      content: { style: 'flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0;' },
+    }"
     @update:visible="emit('update:visible', $event)"
   >
     <template #header>
@@ -96,8 +100,8 @@ const removeItem = (index: number): void => {
     </template>
 
     <!-- View mode -->
-    <template v-if="mode === 'view'">
-      <div class="flex flex-col gap-2">
+    <div v-if="mode === 'view'" class="exp-body">
+      <div class="exp-scroll-list">
         <div
           v-for="item in modelValue"
           :key="item.id"
@@ -107,15 +111,21 @@ const removeItem = (index: number): void => {
           <span class="text-sm font-semibold tabular-nums text-primary">{{ fmt(item.amount) }}</span>
         </div>
       </div>
-      <div class="mt-3 flex items-center justify-between border-t border-app pt-3">
+      <div class="exp-total-row">
         <span class="text-sm font-medium text-secondary">Total</span>
         <span class="text-sm font-bold tabular-nums text-primary">{{ fmt(total) }}</span>
       </div>
-    </template>
+    </div>
 
     <!-- Edit mode -->
-    <template v-else>
-      <div class="flex flex-col gap-2">
+    <div v-else class="exp-body">
+      <div class="exp-edit-toolbar">
+        <button class="btn btn-ghost btn-sm" @click="addItem">
+          <i class="pi pi-plus text-xs" /> Add item
+        </button>
+      </div>
+
+      <div class="exp-scroll-list exp-scroll-list-edit">
         <div
           v-for="(item, index) in draft"
           :key="item.id"
@@ -140,15 +150,11 @@ const removeItem = (index: number): void => {
         </div>
       </div>
 
-      <button class="btn btn-ghost btn-sm mt-3 w-full" @click="addItem">
-        <i class="pi pi-plus text-xs" /> Add item
-      </button>
-
-      <div v-if="draft.length" class="mt-3 flex items-center justify-between border-t border-app pt-3">
+      <div v-if="draft.length" class="exp-total-row">
         <span class="text-sm font-medium text-secondary">Total</span>
         <span class="text-sm font-bold tabular-nums text-primary">{{ fmt(draftTotal) }}</span>
       </div>
-    </template>
+    </div>
 
     <template #footer>
       <div class="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-between">
@@ -168,3 +174,44 @@ const removeItem = (index: number): void => {
     </template>
   </Dialog>
 </template>
+
+<style scoped>
+.exp-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.exp-scroll-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 0.5rem;
+  min-height: 0;
+}
+
+.exp-scroll-list-edit {
+  padding-right: 2px;
+}
+
+.exp-edit-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.exp-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--app-border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+}
+</style>
