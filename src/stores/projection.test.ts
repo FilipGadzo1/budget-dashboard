@@ -47,6 +47,7 @@ describe('projection store', () => {
       monthlyIncome: 6000,
       monthlyExpenses: 3500,
       months: 18,
+      incomeItems: [],
       expenseItems: [],
       monthlyAdjustments: [],
     })
@@ -100,6 +101,7 @@ describe('projection store', () => {
       monthlyIncome: 4700,
       monthlyExpenses: 2800,
       months: 18,
+      incomeItems: [],
       expenseItems: [],
       monthlyAdjustments: [],
     })

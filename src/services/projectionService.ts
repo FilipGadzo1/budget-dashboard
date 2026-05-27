@@ -16,6 +16,9 @@ export const buildProjectionRows = (
   locale: string,
 ): ProjectionRow[] => {
   const startDate = monthKeyToDate(startMonth)
+  const baseIncome = inputs.incomeItems?.length
+    ? inputs.incomeItems.reduce((s, i) => s + i.amount, 0)
+    : inputs.monthlyIncome
   const baseExpenses = inputs.expenseItems?.length
     ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
     : inputs.monthlyExpenses
@@ -29,7 +32,7 @@ export const buildProjectionRows = (
     const adj = adjustments.find((a) => a.monthKey === monthKey)
     const savAdj = savingsAdjs.find((a) => a.monthKey === monthKey)
     const savingsContribution = savAdj?.expenseAdjustment ?? 0
-    const rowIncome = inputs.monthlyIncome + (adj?.incomeAdjustment ?? 0)
+    const rowIncome = baseIncome + (adj?.incomeAdjustment ?? 0)
     const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0) + savingsContribution
     const rowNet = rowIncome - rowExpenses
     runningBalance += rowNet

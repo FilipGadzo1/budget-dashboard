@@ -9,10 +9,11 @@ import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
+import IncomeDialog from '@/components/projections/IncomeDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
-import type { ExpenseItem, MonthAdjustment, ProjectionInputs } from '@/models'
+import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs } from '@/models'
 import {
   buildProjectionRows,
   buildProjectionShareSummary,
@@ -80,6 +81,32 @@ const form = reactive({
 })
 const formErrors = reactive<Record<string, string>>({})
 
+const incomeItems = computed(() => projectionStore.inputs.incomeItems)
+const hasIncomeItems = computed(() => incomeItems.value.length > 0)
+const totalIncome = computed(() => incomeItems.value.reduce((s, i) => s + i.amount, 0))
+
+const displayedIncome = computed({
+  get: () => (hasIncomeItems.value ? totalIncome.value : form.monthlyIncome),
+  set: (val: number) => { form.monthlyIncome = val },
+})
+
+const showIncomeDialog = ref(false)
+const incomeDialogMode = ref<'view' | 'edit'>('view')
+
+const openIncomeView = (): void => {
+  incomeDialogMode.value = 'view'
+  showIncomeDialog.value = true
+}
+
+const openIncomeEdit = (): void => {
+  incomeDialogMode.value = 'edit'
+  showIncomeDialog.value = true
+}
+
+const onIncomeItemsUpdate = (items: IncomeItem[]): void => {
+  projectionStore.setIncomeItems(items)
+}
+
 const expenseItems = computed(() => projectionStore.inputs.expenseItems)
 const hasExpenseItems = computed(() => expenseItems.value.length > 0)
 const totalExpenses = computed(() => expenseItems.value.reduce((s, i) => s + i.amount, 0))
@@ -127,6 +154,10 @@ const selectedCurrencyCode = computed({
     const convertedExpenses = Math.round(convert(form.monthlyExpenses, prev, nextCurrencyCode) * 100) / 100
     form.monthlyIncome = convertedIncome
     form.monthlyExpenses = convertedExpenses
+    const convertedIncomeItems = projectionStore.inputs.incomeItems.map((item) => ({
+      ...item,
+      amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
+    }))
     const convertedItems = projectionStore.inputs.expenseItems.map((item) => ({
       ...item,
       amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
@@ -135,9 +166,11 @@ const selectedCurrencyCode = computed({
       monthlyIncome: convertedIncome,
       monthlyExpenses: convertedExpenses,
       months: form.months,
+      incomeItems: projectionStore.inputs.incomeItems,
       expenseItems: projectionStore.inputs.expenseItems,
       monthlyAdjustments: projectionStore.inputs.monthlyAdjustments,
     })
+    projectionStore.setIncomeItems(convertedIncomeItems)
     projectionStore.setExpenseItems(convertedItems)
     uiStore.setPreferences({ currencyCode: nextCurrencyCode, locale: uiStore.locale })
     collabStore.broadcastProfileUpdate(nextCurrencyCode, uiStore.locale, uiStore.selectedMonth)
@@ -313,16 +346,49 @@ const downloadShareSummary = (): void => {
 
         <!-- Money inputs -->
         <div class="proj-money-field">
-          <label class="form-label" for="monthly-income">Monthly income</label>
+          <div class="proj-exp-header">
+            <label class="form-label" for="monthly-income">Monthly income</label>
+            <div class="proj-exp-actions">
+              <button
+                v-if="hasIncomeItems"
+                class="proj-items-chip"
+                @click="openIncomeView"
+              >
+                <i class="pi pi-list text-xs" />
+                {{ incomeItems.length }} sources
+              </button>
+              <button
+                v-if="hasIncomeItems && !collabStore.isReadOnly"
+                class="proj-items-chip proj-items-chip-icon"
+                title="Edit sources"
+                @click="openIncomeEdit"
+              >
+                <i class="pi pi-pencil text-xs" />
+              </button>
+              <button
+                v-if="!hasIncomeItems && !collabStore.isReadOnly"
+                class="proj-items-chip"
+                @click="openIncomeEdit"
+              >
+                <i class="pi pi-plus text-xs" />
+                Itemize
+              </button>
+            </div>
+          </div>
           <CurrencyInput
             input-id="monthly-income"
-            v-model="form.monthlyIncome"
+            v-model="displayedIncome"
             :currency="currencyCode"
             :locale="locale"
             :invalid="!!formErrors.monthlyIncome"
-            :disabled="collabStore.isReadOnly"
+            :disabled="hasIncomeItems || collabStore.isReadOnly"
           />
-          <p v-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
+          <div class="proj-exp-meta">
+            <p v-if="hasIncomeItems" class="proj-meta-note">
+              Sum of {{ incomeItems.length }} source{{ incomeItems.length !== 1 ? 's' : '' }}
+            </p>
+            <p v-else-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
+          </div>
         </div>
 
         <div class="proj-money-field">
@@ -453,6 +519,15 @@ const downloadShareSummary = (): void => {
     </div>
 
     <!-- ── Dialogs ────────────────────────────────────────────────── -->
+    <IncomeDialog
+      v-model:visible="showIncomeDialog"
+      :initial-mode="incomeDialogMode"
+      :model-value="incomeItems"
+      :currency="currencyCode"
+      :locale="locale"
+      @update:model-value="onIncomeItemsUpdate"
+    />
+
     <ExpensesDialog
       v-model:visible="showExpensesDialog"
       :initial-mode="expensesDialogMode"

@@ -7,6 +7,12 @@ export interface ExpenseItem {
   sortOrder: number
 }
 
+export interface IncomeItem {
+  id: string
+  name: string
+  amount: number
+}
+
 export interface MonthAdjustment {
   id: string
   monthKey: string
@@ -19,6 +25,7 @@ export interface ProjectionInputs {
   monthlyIncome: number
   monthlyExpenses: number
   months: number
+  incomeItems: IncomeItem[]
   expenseItems: ExpenseItem[]
   monthlyAdjustments: MonthAdjustment[]
   savingsAdjustments?: MonthAdjustment[]   // system-generated, separate from user adjustments

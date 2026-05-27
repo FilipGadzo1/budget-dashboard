@@ -1,13 +1,14 @@
 import { supabase } from '@/lib/supabase'
-import type { ExpenseItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, SavingsDeposit, SavingsGoal, UiStateSnapshot } from '@/models'
+import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, SavingsDeposit, SavingsGoal, UiStateSnapshot } from '@/models'
 
 type ScenarioUpdates = Partial<{
   name: string
   monthly_income: number
   monthly_expenses: number
   months: number
-  expense_items: string
-  monthly_adjustments: string
+  income_items: IncomeItem[]
+  expense_items: ExpenseItem[]
+  monthly_adjustments: MonthAdjustment[]
   is_active: boolean
 }>
 
@@ -53,7 +54,7 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
   const [inputsResult, itemsResult] = await Promise.all([
     supabase
       .from('projection_inputs')
-      .select('monthly_income, monthly_expenses, months, monthly_adjustments')
+      .select('monthly_income, monthly_expenses, months, monthly_adjustments, income_items')
       .eq('user_id', userId)
       .single(),
     supabase
@@ -81,15 +82,32 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
   const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
     id: a.id ?? crypto.randomUUID(),
     monthKey: a.monthKey ?? '',
+    incomeItems: Array.isArray(a.incomeItems)
+      ? a.incomeItems.map((i: any) => ({
+          id: i.id ?? crypto.randomUUID(),
+          name: i.name ?? '',
+          amount: Number(i.amount ?? 0),
+        }))
+      : undefined,
     incomeAdjustment: Number(a.incomeAdjustment ?? 0),
     expenseAdjustment: Number(a.expenseAdjustment ?? 0),
     note: a.note ?? undefined,
+  }))
+
+  const rawIncome: unknown[] = Array.isArray(inputsResult.data.income_items)
+    ? inputsResult.data.income_items
+    : []
+  const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
+    id: i.id ?? crypto.randomUUID(),
+    name: i.name ?? '',
+    amount: Number(i.amount ?? 0),
   }))
 
   return {
     monthlyIncome: Number(inputsResult.data.monthly_income),
     monthlyExpenses: Number(inputsResult.data.monthly_expenses),
     months: inputsResult.data.months,
+    incomeItems,
     expenseItems,
     monthlyAdjustments,
   }
@@ -128,7 +146,8 @@ export async function saveProjectionInputs(userId: string, inputs: ProjectionInp
       monthly_income: inputs.monthlyIncome,
       monthly_expenses: inputs.monthlyExpenses,
       months: inputs.months,
-      monthly_adjustments: JSON.stringify(inputs.monthlyAdjustments ?? []),
+      income_items: inputs.incomeItems ?? [],
+      monthly_adjustments: inputs.monthlyAdjustments ?? [],
     })
     .eq('user_id', userId)
 
@@ -140,7 +159,7 @@ export async function saveProjectionInputs(userId: string, inputs: ProjectionInp
 export async function fetchScenarios(userId: string): Promise<{ scenarios: ProjectionScenario[]; activeScenarioId: string | null }> {
   const { data, error } = await supabase
     .from('scenarios')
-    .select('id, name, monthly_income, monthly_expenses, months, is_active, updated_at, expense_items, monthly_adjustments')
+    .select('id, name, monthly_income, monthly_expenses, months, is_active, updated_at, income_items, expense_items, monthly_adjustments')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -152,6 +171,12 @@ export async function fetchScenarios(userId: string): Promise<{ scenarios: Proje
   let activeScenarioId: string | null = null
   const scenarios: ProjectionScenario[] = (data ?? []).map((row) => {
     if (row.is_active) activeScenarioId = row.id
+    const rawIncome: unknown[] = Array.isArray(row.income_items) ? row.income_items : []
+    const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
+      id: i.id ?? crypto.randomUUID(),
+      name: i.name ?? '',
+      amount: Number(i.amount ?? 0),
+    }))
     const rawItems: unknown[] = Array.isArray(row.expense_items) ? row.expense_items : []
     const expenseItems: ExpenseItem[] = rawItems.map((i: any) => ({
       id: i.id ?? crypto.randomUUID(),
@@ -163,6 +188,13 @@ export async function fetchScenarios(userId: string): Promise<{ scenarios: Proje
     const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
       id: a.id ?? crypto.randomUUID(),
       monthKey: a.monthKey ?? '',
+      incomeItems: Array.isArray(a.incomeItems)
+        ? a.incomeItems.map((i: any) => ({
+            id: i.id ?? crypto.randomUUID(),
+            name: i.name ?? '',
+            amount: Number(i.amount ?? 0),
+          }))
+        : undefined,
       incomeAdjustment: Number(a.incomeAdjustment ?? 0),
       expenseAdjustment: Number(a.expenseAdjustment ?? 0),
       note: a.note ?? undefined,
@@ -174,6 +206,7 @@ export async function fetchScenarios(userId: string): Promise<{ scenarios: Proje
         monthlyIncome: Number(row.monthly_income),
         monthlyExpenses: Number(row.monthly_expenses),
         months: row.months,
+        incomeItems,
         expenseItems,
         monthlyAdjustments,
       },
@@ -196,8 +229,9 @@ export async function insertScenario(userId: string, scenario: ProjectionScenari
     monthly_income: scenario.inputs.monthlyIncome,
     monthly_expenses: scenario.inputs.monthlyExpenses,
     months: scenario.inputs.months,
-    expense_items: JSON.stringify(scenario.inputs.expenseItems ?? []),
-    monthly_adjustments: JSON.stringify(scenario.inputs.monthlyAdjustments ?? []),
+    income_items: scenario.inputs.incomeItems ?? [],
+    expense_items: scenario.inputs.expenseItems ?? [],
+    monthly_adjustments: scenario.inputs.monthlyAdjustments ?? [],
     is_active: isActive,
   })
 

@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
 import { mockProjectionInputs } from '@/data/mockData'
-import type { ExpenseItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
+import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
 import {
   deleteAllScenarios,
   deleteScenario as dbDeleteScenario,
@@ -116,6 +116,14 @@ export const useProjectionStore = defineStore('projection', () => {
 
   const setInputs = (nextInputs: ProjectionInputs): void => {
     snapshot.value = { ...snapshot.value, inputs: { ...snapshot.value.inputs, ...nextInputs } }
+  }
+
+  const setIncomeItems = (items: IncomeItem[]): void => {
+    snapshot.value = {
+      ...snapshot.value,
+      inputs: { ...snapshot.value.inputs, incomeItems: items },
+    }
+    // The watch on snapshot.value.inputs triggers debouncedSaveInputs automatically
   }
 
   const setExpenseItems = (items: ExpenseItem[]): void => {
@@ -243,8 +251,9 @@ export const useProjectionStore = defineStore('projection', () => {
         monthly_income: snapshot.value.inputs.monthlyIncome,
         monthly_expenses: snapshot.value.inputs.monthlyExpenses,
         months: snapshot.value.inputs.months,
-        expense_items: JSON.stringify(snapshot.value.inputs.expenseItems ?? []),
-        monthly_adjustments: JSON.stringify(snapshot.value.inputs.monthlyAdjustments ?? []),
+        income_items: snapshot.value.inputs.incomeItems ?? [],
+        expense_items: snapshot.value.inputs.expenseItems ?? [],
+        monthly_adjustments: snapshot.value.inputs.monthlyAdjustments ?? [],
       })
     }
     return overwritten
@@ -343,12 +352,25 @@ export const useProjectionStore = defineStore('projection', () => {
     withRemoteFlag(() => {
       snapshot.value = {
         ...snapshot.value,
-        inputs: { monthlyIncome: income, monthlyExpenses: expenses, months, expenseItems, monthlyAdjustments },
+        inputs: {
+          monthlyIncome: income,
+          monthlyExpenses: expenses,
+          months,
+          incomeItems: snapshot.value.inputs.incomeItems,
+          expenseItems,
+          monthlyAdjustments,
+        },
       }
     })
   }
 
   const applyRemoteScenarioUpsert = (row: Record<string, unknown>): void => {
+    const rawIncome = Array.isArray(row.income_items) ? (row.income_items as unknown[]) : []
+    const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
+      id: i.id ?? crypto.randomUUID(),
+      name: i.name ?? '',
+      amount: Number(i.amount ?? 0),
+    }))
     const rawItems = Array.isArray(row.expense_items) ? (row.expense_items as unknown[]) : []
     const expenseItems: ExpenseItem[] = rawItems.map((i: any) => ({
       id: i.id ?? crypto.randomUUID(),
@@ -371,6 +393,7 @@ export const useProjectionStore = defineStore('projection', () => {
         monthlyIncome: Number(row.monthly_income),
         monthlyExpenses: Number(row.monthly_expenses),
         months: row.months as number,
+        incomeItems,
         expenseItems,
         monthlyAdjustments,
       },
@@ -421,6 +444,7 @@ export const useProjectionStore = defineStore('projection', () => {
     hydrate,
     resetStore,
     setInputs,
+    setIncomeItems,
     setExpenseItems,
     setMonthlyAdjustments,
     reset,
