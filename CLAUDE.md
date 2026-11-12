@@ -104,7 +104,8 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 `ProjectionsView.vue` initialises a local `form` reactive object from the store on setup. A `watch(() => projectionStore.inputs, ...)` keeps the form in sync when the store changes externally (scenario load, realtime update). Without this watch, loading a scenario would not update the visible form fields.
 
 **Component structure:**
-- `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages
+- `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages. Settings is **not** in the navigation: it lives in `AccountMenu` (theme switch, Settings, Sign out), which opens upward from the account row in the sidebar footer and downward from the avatar on mobile.
+- `src/components/app/AppLogo.vue` — the app mark (forecast line). `public/favicon.svg` is the same drawing; change both together.
 - `src/components/shared/` — reusable UI: `DatePickerField` (the only calendar control — wraps PrimeVue `DatePicker` with a string model, `mode="month"` → `YYYY-MM`, `mode="date"` → `YYYY-MM-DD`; do not use native `<input type="month|date">`), `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
 - `src/components/dashboard/` — `TrendChart` (cash / net-worth lines + monthly income-vs-expenses columns, with axes and a hover/keyboard readout; geometry helpers in `src/services/chartService.ts`), `CategoryBreakdown`, `GettingStarted` (first-run guide), `MilestonesCard`
 - `src/components/projections/` — `ProjectionTable`, `ItemsDialog`
@@ -117,7 +118,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **CSS / styling:**
 - Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`). Chart series use `--chart-1` / `--chart-2`, a pair checked for colour-blind separation and contrast in both themes — do not substitute status colours (`--app-positive` / `--app-negative`) for series.
-- Dark mode via `html.app-dark` selector; PrimeVue dark mode selector set to `.app-dark`
+- Dark mode via `html.app-dark` selector; PrimeVue dark mode selector set to `.app-dark`. `ThemeMode` is `'light' | 'dark' | 'system'`; `'system'` follows the device (`prefers-color-scheme`). Use `uiStore.isDark` to ask which theme is showing — `themeMode === 'dark'` is wrong when the mode is `'system'`.
 - Use Tailwind for layout/spacing; use `.text-primary`, `.text-secondary`, `.divider`, `.border-app`, `.bg-surface` utility classes (defined in `style.css`) instead of inline `style=""` for token-based colors
 - PrimeVue component overrides are in the `/* PrimeVue overrides */` section of `style.css`
 

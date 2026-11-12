@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppLogo from '@/components/app/AppLogo.vue'
 import { useAuth } from '@/composables/useAuth'
 
 const { signInWithGoogle } = useAuth()
@@ -16,7 +17,7 @@ const features = [
     <!-- Left: Branding & features -->
     <div class="login-hero">
       <div class="login-hero-inner">
-        <div class="login-logo-icon">B</div>
+        <AppLogo :size="44" class="login-logo-icon" />
         <h1 class="login-heading">Budget Dashboard</h1>
         <p class="login-tagline">Smart projections, scenario planning, and real-time currency tracking.</p>
 
@@ -85,16 +86,6 @@ const features = [
 }
 
 .login-logo-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #059669, #34d399);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1.125rem;
-  color: white;
   margin-bottom: 1.25rem;
 }
 
@@ -225,8 +216,6 @@ const features = [
   .login-logo-icon {
     width: 36px;
     height: 36px;
-    font-size: 1rem;
-    border-radius: 9px;
     margin-bottom: 1rem;
   }
 

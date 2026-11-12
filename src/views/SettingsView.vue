@@ -124,6 +124,13 @@ const resetAll = async (): Promise<void> => {
           >
             <i class="pi pi-moon text-xs" /> Dark
           </button>
+          <button
+            class="btn btn-sm"
+            :class="uiStore.themeMode === 'system' ? 'btn-primary' : 'btn-secondary'"
+            @click="uiStore.setThemeMode('system')"
+          >
+            <i class="pi pi-desktop text-xs" /> System
+          </button>
         </div>
       </div>
 
@@ -185,7 +192,7 @@ const resetAll = async (): Promise<void> => {
 
   .settings-theme-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 0.5rem;
   }
 
