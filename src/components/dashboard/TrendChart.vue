@@ -1,74 +1,197 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { buildProjectionTrendPath } from '@/services/projectionService'
 import type { ProjectionRow } from '@/models'
+import { labelStride, linePath, niceScale } from '@/services/chartService'
+
+// Two views of the same months:
+//   balance — cash over time (plus net worth when the budget has savings), lines
+//   monthly — income against expenses each month, paired columns
+// Both have a single y-axis, a hover/keyboard readout for every month, and use
+// the two validated series colours (--chart-1 / --chart-2).
 
 const props = defineProps<{
   rows: ProjectionRow[]
   peakBalance: number
   endingBalance: number
   formatCurrency: (n: number) => string
+  formatCompactCurrency: (n: number) => string
+  locale: string
+  /** Draw the net-worth line alongside cash (only meaningful with savings). */
+  showNetWorth?: boolean
 }>()
 
-type ViewMode = 'cumulative' | 'monthly'
-const viewMode = ref<ViewMode>('cumulative')
+type ViewMode = 'balance' | 'monthly'
+const viewMode = ref<ViewMode>('balance')
 
-// ── Cumulative view ────────────────────────────────────────────
-const SVG_W = 400
-const SVG_H = 140
-const PAD = 10
+// ── Size: drawn at real pixel size so text stays crisp and constant ──────────
+const wrap = ref<HTMLElement | null>(null)
+const width = ref(560)
+const HEIGHT = 220
+const MARGIN = { top: 12, right: 12, bottom: 26, left: 52 }
 
-const trendPath = computed(() => buildProjectionTrendPath(props.rows, SVG_W, SVG_H))
-const trendFillPath = computed(() =>
-  trendPath.value ? `${trendPath.value} L ${SVG_W - PAD} ${SVG_H} L ${PAD} ${SVG_H} Z` : '',
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  if (!wrap.value) return
+  width.value = wrap.value.clientWidth || width.value
+  if (typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver((entries) => {
+    const next = entries[0]?.contentRect.width
+    if (next) width.value = next
+  })
+  observer.observe(wrap.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
+
+const plotW = computed(() => Math.max(40, width.value - MARGIN.left - MARGIN.right))
+const plotH = HEIGHT - MARGIN.top - MARGIN.bottom
+const count = computed(() => props.rows.length)
+const slotW = computed(() => plotW.value / Math.max(1, count.value))
+const xCenter = (i: number): number => MARGIN.left + (i + 0.5) * slotW.value
+
+// ── Series ───────────────────────────────────────────────────────────────────
+const series = computed(() =>
+  viewMode.value === 'balance'
+    ? [
+        { key: 'cash', label: 'Cash', color: 'var(--chart-1)', values: props.rows.map((r) => r.cumulativeBalance) },
+        ...(props.showNetWorth
+          ? [{ key: 'netWorth', label: 'Net worth', color: 'var(--chart-2)', values: props.rows.map((r) => r.netWorth) }]
+          : []),
+      ]
+    : [
+        { key: 'income', label: 'Income', color: 'var(--chart-1)', values: props.rows.map((r) => r.income) },
+        { key: 'expenses', label: 'Expenses', color: 'var(--chart-2)', values: props.rows.map((r) => r.expenses) },
+      ],
 )
 
-// ── Monthly bar view ───────────────────────────────────────────
-const LABEL_H = 16  // px reserved at bottom for month labels
-const BAR_TOP = PAD
-const BAR_BOTTOM = SVG_H - LABEL_H - 4
+const scale = computed(() => niceScale(series.value.flatMap((s) => s.values)))
+const y = (value: number): number => {
+  const { min, max } = scale.value
+  return MARGIN.top + plotH - ((value - min) / (max - min)) * plotH
+}
+const zeroY = computed(() => y(0))
 
-const monthlyBars = computed(() => {
-  if (!props.rows.length) return []
-  const maxVal = Math.max(...props.rows.map((r) => Math.max(r.income, r.expenses)), 1)
-  const availW = SVG_W - PAD * 2
-  const availH = BAR_BOTTOM - BAR_TOP
-  const n = props.rows.length
-  const slotW = availW / n
-  const gap = Math.max(1, slotW * 0.15)
-  const groupW = Math.max(3, slotW - gap)
-  const incW = groupW
-  const expW = Math.max(2, groupW * 0.6)
+// ── Lines (balance view) ─────────────────────────────────────────────────────
+const lines = computed(() =>
+  series.value.map((s) => ({
+    ...s,
+    path: linePath(s.values.map((v, i) => ({ x: xCenter(i), y: y(v) }))),
+  })),
+)
 
+// Soft wash under the cash line, down to the zero line
+const cashArea = computed(() => {
+  const cash = lines.value[0]
+  if (!cash || count.value < 2) return ''
+  const first = xCenter(0).toFixed(2)
+  const last = xCenter(count.value - 1).toFixed(2)
+  return `${cash.path} L ${last} ${zeroY.value.toFixed(2)} L ${first} ${zeroY.value.toFixed(2)} Z`
+})
+
+// ── Columns (monthly view): income and expenses side by side ────────────────
+const columns = computed(() => {
+  const gap = 2
+  const barW = Math.max(2, Math.min(24, (slotW.value - gap) / 2 - 2))
   return props.rows.map((row, i) => {
-    const slotX = PAD + i * slotW
-    const cx = slotX + slotW / 2
-
-    const incH = Math.max(1.5, (row.income / maxVal) * availH)
-    const expH = Math.max(1.5, (row.expenses / maxVal) * availH)
-    const surplus = row.net >= 0
-
-    // Month abbreviation — 3 chars
-    const label = row.monthLabel.slice(0, 3)
-
+    const cx = xCenter(i)
+    const bar = (value: number, x: number) => {
+      const top = y(Math.max(0, value))
+      return { x, y: top, width: barW, height: Math.max(0, zeroY.value - top) }
+    }
     return {
-      // Income bar (background, full width)
-      incX: cx - incW / 2,
-      incY: BAR_BOTTOM - incH,
-      incW,
-      incH,
-      // Expense bar (foreground, narrower, centered)
-      expX: cx - expW / 2,
-      expY: BAR_BOTTOM - expH,
-      expW,
-      expH,
-      surplus,
-      label,
-      labelX: cx,
-      labelY: SVG_H - 2,
+      income: bar(row.income, cx - gap / 2 - barW),
+      expenses: bar(row.expenses, cx + gap / 2),
     }
   })
+})
+
+// Column with a 4px rounded top and a square base on the baseline
+const columnPath = (b: { x: number; y: number; width: number; height: number }): string => {
+  if (b.height <= 0) return ''
+  const r = Math.min(4, b.width / 2, b.height)
+  const bottom = b.y + b.height
+  return `M ${b.x} ${bottom} V ${b.y + r} Q ${b.x} ${b.y} ${b.x + r} ${b.y} H ${b.x + b.width - r} Q ${b.x + b.width} ${b.y} ${b.x + b.width} ${b.y + r} V ${bottom} Z`
+}
+
+// ── Axis labels ──────────────────────────────────────────────────────────────
+const xLabels = computed(() => {
+  const stride = labelStride(count.value, plotW.value)
+  return props.rows
+    .map((row, i) => {
+      const [year, month] = row.monthKey.split('-').map(Number)
+      const date = new Date(year, (month ?? 1) - 1, 1)
+      const name = date.toLocaleDateString(props.locale, { month: 'short' })
+      // Name the year where it changes, and on the first label
+      const withYear = i === 0 || month === 1
+      return { i, x: xCenter(i), text: withYear ? `${name} ’${String(year).slice(2)}` : name }
+    })
+    .filter((label) => label.i % stride === 0)
+})
+
+// ── Hover / keyboard readout ────────────────────────────────────────────────
+const activeIndex = ref<number | null>(null)
+
+const indexAt = (clientX: number): number | null => {
+  if (!wrap.value || !count.value) return null
+  const x = clientX - wrap.value.getBoundingClientRect().left - MARGIN.left
+  return Math.min(count.value - 1, Math.max(0, Math.floor(x / slotW.value)))
+}
+
+const onPointerMove = (event: PointerEvent): void => { activeIndex.value = indexAt(event.clientX) }
+const clearActive = (): void => { activeIndex.value = null }
+
+const onKeydown = (event: KeyboardEvent): void => {
+  if (!count.value) return
+  const current = activeIndex.value ?? -1
+  if (event.key === 'ArrowRight') activeIndex.value = Math.min(count.value - 1, current + 1)
+  else if (event.key === 'ArrowLeft') activeIndex.value = Math.max(0, current - 1)
+  else if (event.key === 'Home') activeIndex.value = 0
+  else if (event.key === 'End') activeIndex.value = count.value - 1
+  else if (event.key === 'Escape') activeIndex.value = null
+  else return
+  event.preventDefault()
+}
+
+const onFocus = (): void => { if (activeIndex.value === null && count.value) activeIndex.value = 0 }
+
+const activeRow = computed(() => (activeIndex.value === null ? null : props.rows[activeIndex.value] ?? null))
+
+// One readout, every figure for that month
+const readout = computed(() => {
+  const row = activeRow.value
+  if (!row) return []
+  return viewMode.value === 'balance'
+    ? [
+        { label: 'Cash', value: row.cumulativeBalance, color: 'var(--chart-1)' },
+        ...(props.showNetWorth ? [{ label: 'Net worth', value: row.netWorth, color: 'var(--chart-2)' }] : []),
+        { label: 'Net this month', value: row.net, color: null },
+      ]
+    : [
+        { label: 'Income', value: row.income, color: 'var(--chart-1)' },
+        { label: 'Expenses', value: row.expenses, color: 'var(--chart-2)' },
+        { label: 'Net', value: row.net, color: null },
+        ...(row.savingsContribution > 0 ? [{ label: 'To savings', value: row.savingsContribution, color: null }] : []),
+      ]
+})
+
+const TOOLTIP_W = 176
+// Sits beside the crosshair, flipping to the left near the right edge
+const tooltipStyle = computed(() => {
+  if (activeIndex.value === null) return {}
+  const x = xCenter(activeIndex.value)
+  const flip = x + 12 + TOOLTIP_W > width.value
+  // Never slide over the y-axis labels on narrow screens
+  const left = flip ? Math.max(MARGIN.left, x - 12 - TOOLTIP_W) : x + 12
+  return { left: `${left}px`, width: `${TOOLTIP_W}px` }
+})
+
+const summaryLabel = computed(() => {
+  const first = props.rows[0]
+  const last = props.rows.at(-1)
+  if (!first || !last) return 'No projection data'
+  return viewMode.value === 'balance'
+    ? `Cash balance from ${first.monthLabel} to ${last.monthLabel}, ending at ${props.formatCurrency(last.cumulativeBalance)}. Use the arrow keys to read each month.`
+    : `Income and expenses for each month from ${first.monthLabel} to ${last.monthLabel}. Use the arrow keys to read each month.`
 })
 </script>
 
@@ -77,18 +200,20 @@ const monthlyBars = computed(() => {
 
     <!-- Header -->
     <div class="chart-header">
-      <p class="text-label">Balance trend</p>
-      <div class="chart-toggle">
+      <p class="text-label">{{ viewMode === 'balance' ? 'Balance over time' : 'Income and expenses' }}</p>
+      <div class="chart-toggle" role="group" aria-label="Chart view">
         <button
           class="chart-toggle-btn"
-          :class="{ 'chart-toggle-active': viewMode === 'cumulative' }"
-          @click="viewMode = 'cumulative'"
+          :class="{ 'chart-toggle-active': viewMode === 'balance' }"
+          :aria-pressed="viewMode === 'balance'"
+          @click="viewMode = 'balance'"
         >
-          Cumulative
+          Balance
         </button>
         <button
           class="chart-toggle-btn"
           :class="{ 'chart-toggle-active': viewMode === 'monthly' }"
+          :aria-pressed="viewMode === 'monthly'"
           @click="viewMode = 'monthly'"
         >
           Monthly
@@ -96,95 +221,122 @@ const monthlyBars = computed(() => {
       </div>
     </div>
 
-    <!-- SVG chart -->
-    <div class="chart-svg-wrap">
+    <!-- Legend: only when there is more than one series to tell apart -->
+    <div v-if="series.length > 1" class="chart-legend">
+      <span v-for="s in series" :key="s.key" class="chart-legend-item">
+        <span
+          class="chart-legend-key"
+          :class="{
+            'chart-legend-key-line': viewMode === 'balance',
+            'chart-legend-key-dashed': viewMode === 'balance' && s.key === 'netWorth',
+          }"
+          :style="{ '--key': s.color }"
+        />
+        {{ s.label }}
+      </span>
+    </div>
+
+    <!-- Chart -->
+    <div ref="wrap" class="chart-wrap">
       <svg
-        :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
+        :width="width"
+        :height="HEIGHT"
+        :viewBox="`0 0 ${width} ${HEIGHT}`"
         class="chart-svg"
         role="img"
-        :aria-label="`Balance ${viewMode} chart`"
+        tabindex="0"
+        :aria-label="summaryLabel"
+        @pointermove="onPointerMove"
+        @pointerleave="clearActive"
+        @keydown="onKeydown"
+        @focus="onFocus"
+        @blur="clearActive"
       >
-        <defs>
-          <linearGradient id="trend-g" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="var(--app-accent)" />
-            <stop offset="100%" stop-color="var(--app-accent)" stop-opacity="0.5" />
-          </linearGradient>
-          <linearGradient id="trend-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="var(--app-accent)" stop-opacity="0.12" />
-            <stop offset="100%" stop-color="var(--app-accent)" stop-opacity="0" />
-          </linearGradient>
-        </defs>
+        <!-- Gridlines + y labels -->
+        <g>
+          <template v-for="tick in scale.ticks" :key="tick">
+            <line
+              :x1="MARGIN.left"
+              :x2="width - MARGIN.right"
+              :y1="y(tick)"
+              :y2="y(tick)"
+              class="chart-grid"
+              :class="{ 'chart-grid-zero': tick === 0 }"
+            />
+            <text :x="MARGIN.left - 8" :y="y(tick)" class="chart-axis-text" text-anchor="end" dominant-baseline="middle">
+              {{ formatCompactCurrency(tick) }}
+            </text>
+          </template>
+        </g>
 
-        <!-- Cumulative line chart -->
-        <g v-if="viewMode === 'cumulative'">
-          <path v-if="trendFillPath" :d="trendFillPath" fill="url(#trend-fill)" />
+        <!-- X labels -->
+        <text
+          v-for="label in xLabels"
+          :key="label.i"
+          :x="label.x"
+          :y="HEIGHT - 8"
+          class="chart-axis-text"
+          text-anchor="middle"
+        >{{ label.text }}</text>
+
+        <!-- Balance: lines -->
+        <g v-if="viewMode === 'balance'">
+          <path v-if="cashArea" :d="cashArea" fill="var(--chart-1)" opacity="0.1" />
           <path
-            v-if="trendPath"
-            :d="trendPath"
+            v-for="line in lines"
+            :key="line.key"
+            :d="line.path"
             fill="none"
-            stroke="url(#trend-g)"
-            stroke-width="2.5"
+            :stroke="line.color"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
+            :stroke-dasharray="line.key === 'netWorth' ? '6 4' : undefined"
           />
         </g>
 
-        <!-- Monthly bar chart: income (bg) vs expenses (fg) -->
+        <!-- Monthly: paired columns -->
         <g v-else>
-          <!-- Baseline -->
+          <template v-for="(col, i) in columns" :key="i">
+            <path :d="columnPath(col.income)" fill="var(--chart-1)" :opacity="activeIndex === null || activeIndex === i ? 1 : 0.55" />
+            <path :d="columnPath(col.expenses)" fill="var(--chart-2)" :opacity="activeIndex === null || activeIndex === i ? 1 : 0.55" />
+          </template>
+        </g>
+
+        <!-- Crosshair + markers for the month being read -->
+        <g v-if="activeIndex !== null">
           <line
-            :x1="PAD"
-            :y1="BAR_BOTTOM"
-            :x2="SVG_W - PAD"
-            :y2="BAR_BOTTOM"
-            stroke="var(--app-border)"
-            stroke-width="1"
+            :x1="xCenter(activeIndex)"
+            :x2="xCenter(activeIndex)"
+            :y1="MARGIN.top"
+            :y2="MARGIN.top + plotH"
+            class="chart-crosshair"
           />
-          <template v-for="(bar, i) in monthlyBars" :key="i">
-            <!-- Income bar (background) -->
-            <rect
-              :x="bar.incX"
-              :y="bar.incY"
-              :width="bar.incW"
-              :height="bar.incH"
-              fill="var(--app-positive)"
-              opacity="0.18"
-              rx="2"
+          <template v-if="viewMode === 'balance'">
+            <circle
+              v-for="line in lines"
+              :key="line.key"
+              :cx="xCenter(activeIndex)"
+              :cy="y(line.values[activeIndex] ?? 0)"
+              r="4"
+              :fill="line.color"
+              class="chart-marker"
             />
-            <!-- Expense bar (foreground) -->
-            <rect
-              :x="bar.expX"
-              :y="bar.expY"
-              :width="bar.expW"
-              :height="bar.expH"
-              fill="var(--app-negative)"
-              opacity="0.72"
-              rx="2"
-            />
-            <!-- Month label -->
-            <text
-              :x="bar.labelX"
-              :y="bar.labelY"
-              text-anchor="middle"
-              font-size="7.5"
-              fill="var(--app-text-secondary)"
-              font-family="'DM Sans', sans-serif"
-            >{{ bar.label }}</text>
           </template>
         </g>
       </svg>
-    </div>
 
-    <!-- Monthly legend -->
-    <div v-if="viewMode === 'monthly'" class="chart-legend">
-      <span class="chart-legend-item">
-        <span class="chart-legend-dot chart-legend-dot-income" />
-        Income
-      </span>
-      <span class="chart-legend-item">
-        <span class="chart-legend-dot chart-legend-dot-expense" />
-        Expenses
-      </span>
+      <!-- Readout -->
+      <div v-if="activeRow" class="chart-tooltip" :style="tooltipStyle" role="status" aria-live="polite">
+        <p class="chart-tooltip-title">{{ activeRow.monthLabel }}</p>
+        <div v-for="item in readout" :key="item.label" class="chart-tooltip-row">
+          <span class="chart-tooltip-label">
+            <span v-if="item.color" class="chart-tooltip-key" :style="{ background: item.color }" />
+            {{ item.label }}
+          </span>
+          <span class="chart-tooltip-value">{{ formatCurrency(item.value) }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Footer stats -->
@@ -194,14 +346,14 @@ const monthlyBars = computed(() => {
         <span class="chart-stat-value">{{ rows[0]?.monthLabel ?? 'N/A' }}</span>
       </div>
       <div class="chart-stat">
-        <span class="chart-stat-label">Peak balance</span>
-        <span class="chart-stat-value text-positive">{{ formatCurrency(peakBalance) }}</span>
+        <span class="chart-stat-label">Peak cash</span>
+        <span class="chart-stat-value">{{ formatCurrency(peakBalance) }}</span>
       </div>
       <div class="chart-stat">
-        <span class="chart-stat-label">Ending</span>
+        <span class="chart-stat-label">Ending cash</span>
         <span
           class="chart-stat-value"
-          :class="endingBalance >= 0 ? 'text-positive' : 'text-negative'"
+          :class="{ 'text-negative': endingBalance < 0 }"
         >{{ formatCurrency(endingBalance) }}</span>
       </div>
     </div>
@@ -221,7 +373,8 @@ const monthlyBars = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 /* ─── Toggle ──────────────────────────────────────────────────── */
@@ -232,6 +385,7 @@ const monthlyBars = computed(() => {
   border-radius: 100px;
   padding: 2px;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .chart-toggle-btn {
@@ -258,44 +412,139 @@ const monthlyBars = computed(() => {
 /* ─── Legend ──────────────────────────────────────────────────── */
 .chart-legend {
   display: flex;
-  gap: 1rem;
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .chart-legend-item {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--app-text-secondary);
 }
 
-.chart-legend-dot {
-  width: 8px;
-  height: 8px;
+/* Key mirrors the mark: a square for columns, a stroke for lines */
+.chart-legend-key {
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
+  background: var(--key);
   flex-shrink: 0;
 }
 
-.chart-legend-dot-income {
-  background: var(--app-positive);
-  opacity: 0.55;
+.chart-legend-key-line {
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
 }
 
-.chart-legend-dot-expense {
-  background: var(--app-negative);
-  opacity: 0.72;
+.chart-legend-key-dashed {
+  background: repeating-linear-gradient(90deg, var(--key) 0 5px, transparent 5px 8px);
 }
 
-/* ─── SVG ─────────────────────────────────────────────────────── */
-.chart-svg-wrap {
+/* ─── Plot ────────────────────────────────────────────────────── */
+.chart-wrap {
+  position: relative;
   width: 100%;
 }
 
 .chart-svg {
-  width: 100%;
   display: block;
+  max-width: 100%;
+  touch-action: pan-y;
+  border-radius: 0.375rem;
+}
+
+.chart-svg:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.chart-grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+/* The zero line is the baseline the reader measures from */
+.chart-grid-zero {
+  stroke: var(--app-border-strong);
+}
+
+.chart-axis-text {
+  font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  fill: var(--app-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-crosshair {
+  stroke: var(--app-border-strong);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+  pointer-events: none;
+}
+
+/* Ring in the surface colour keeps the marker legible where lines cross */
+.chart-marker {
+  stroke: var(--app-surface);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+/* ─── Readout ─────────────────────────────────────────────────── */
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.chart-tooltip-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  line-height: 1.5;
+}
+
+.chart-tooltip-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+
+.chart-tooltip-key {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.chart-tooltip-value {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text);
+  white-space: nowrap;
 }
 
 /* ─── Footer stats ────────────────────────────────────────────── */
@@ -303,7 +552,7 @@ const monthlyBars = computed(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid var(--app-border);
 }
@@ -312,6 +561,7 @@ const monthlyBars = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .chart-stat-label {
@@ -328,5 +578,8 @@ const monthlyBars = computed(() => {
   color: var(--app-text);
   font-family: 'DM Mono', monospace;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -252,10 +252,10 @@ const downloadShareSummary = (): void => {
         <span v-if="collabStore.isReadOnly" class="status-pill status-pill-warning proj-readonly-pill">
           <i class="pi pi-eye text-xs" /> View only
         </span>
-        <button class="btn btn-ghost btn-icon" title="Copy summary" @click="copyShareSummary">
+        <button class="btn btn-ghost btn-icon" title="Copy summary" aria-label="Copy summary" @click="copyShareSummary">
           <i class="pi pi-copy" />
         </button>
-        <button class="btn btn-ghost btn-icon" title="Download .txt" @click="downloadShareSummary">
+        <button class="btn btn-ghost btn-icon" title="Download .txt" aria-label="Download .txt" @click="downloadShareSummary">
           <i class="pi pi-download" />
         </button>
       </div>
@@ -476,7 +476,7 @@ const downloadShareSummary = (): void => {
               Change in Settings
             </RouterLink>
             <span v-else class="proj-meta-note">Set by the budget owner</span>
-            <button class="btn btn-ghost btn-icon proj-currency-rates" title="Exchange rates" @click="showExchangeDialog = true">
+            <button class="btn btn-ghost btn-icon proj-currency-rates" title="Exchange rates" aria-label="Exchange rates" @click="showExchangeDialog = true">
               <i class="pi pi-arrows-h" />
             </button>
           </div>

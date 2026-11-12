@@ -3,16 +3,19 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import CategoryBreakdown from '@/components/dashboard/CategoryBreakdown.vue'
+import GettingStarted, { type SetupStep } from '@/components/dashboard/GettingStarted.vue'
 import TrendChart from '@/components/dashboard/TrendChart.vue'
 import MilestonesCard from '@/components/dashboard/MilestonesCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
 import { useProjectionStore } from '@/stores/projection'
+import { useSavingsStore } from '@/stores/savings'
 
 const router = useRouter()
 const projectionStore = useProjectionStore()
-const { formatCurrency, formatCompactCurrency } = useCurrency()
-const { rows: projectionRows, summary, milestones, hasSavings, categoryBreakdown } = useEffectiveProjection()
+const savingsStore = useSavingsStore()
+const { formatCurrency, formatCompactCurrency, locale } = useCurrency()
+const { rows: projectionRows, summary, milestones, hasSavings, categoryBreakdown, baseTotals } = useEffectiveProjection()
 
 // Use first row's net so it reflects the actual per-month savings contribution
 const monthlyNet = computed(() => projectionRows.value[0]?.net ?? 0)
@@ -29,6 +32,43 @@ const hasStrongReserve = computed(() => {
   return avgMonthlyExpenses > 0 && summary.value.endingBalance >= avgMonthlyExpenses * 3
 })
 
+// First-run guide: stays until the plan has both income and expenses.
+const setupSteps = computed((): SetupStep[] => [
+  {
+    key: 'balance',
+    title: 'Enter your starting balance',
+    description: 'The cash you have today.',
+    to: '/projections',
+    done: (projectionStore.inputs.startingBalance ?? 0) !== 0,
+    optional: true,
+  },
+  {
+    key: 'income',
+    title: 'Add your income',
+    description: 'One number, or each source separately.',
+    to: '/projections',
+    done: baseTotals.value.income > 0,
+  },
+  {
+    key: 'expenses',
+    title: 'Add your expenses',
+    description: 'Monthly bills, plus yearly ones if you like.',
+    to: '/projections',
+    done: baseTotals.value.expenses > 0,
+  },
+  {
+    key: 'goal',
+    title: 'Create a savings goal',
+    description: 'See when you will reach it.',
+    to: '/savings',
+    done: savingsStore.goals.length > 0,
+    optional: true,
+  },
+])
+const showSetup = computed(
+  () => projectionStore.isReady && !(baseTotals.value.income > 0 && baseTotals.value.expenses > 0),
+)
+
 const statusPill = computed(() => {
   if (noData.value) return { label: 'No data', tone: '' }
   if (monthlyNet.value < 0) return { label: 'Deficit', tone: 'status-pill-negative' }
@@ -39,11 +79,7 @@ const statusPill = computed(() => {
 const insights = computed(() => {
   const list: Array<{ title: string; body: string; tone: 'positive' | 'warning' }> = []
   if (noData.value) {
-    list.push({
-      title: 'No data yet',
-      body: 'Add your monthly income and expenses on the Projections page to see your financial forecast.',
-      tone: 'warning',
-    })
+    // Nothing to say yet — the getting-started card covers it
   } else if (monthlyNet.value < 0) {
     list.push({
       title: 'Monthly deficit',
@@ -101,6 +137,9 @@ const insights = computed(() => {
         </button>
       </div>
     </div>
+
+    <!-- ── First-run guide ────────────────────────────────────────── -->
+    <GettingStarted v-if="showSetup" :steps="setupSteps" />
 
     <!-- ── Mobile hero ────────────────────────────────────────────── -->
     <div class="mobile-hero">
@@ -160,6 +199,9 @@ const insights = computed(() => {
         :peak-balance="milestones.highestBalance"
         :ending-balance="summary.endingBalance"
         :format-currency="formatCurrency"
+        :format-compact-currency="formatCompactCurrency"
+        :locale="locale"
+        :show-net-worth="hasSavings"
       />
 
       <div class="dash-right-col">

@@ -22,7 +22,7 @@ npx playwright test --grep "save scenario"   # Run tests matching a pattern
 npx playwright show-report                   # Open HTML report after a run
 ```
 
-E2E tests require the dev server running on `http://localhost:5174` (started automatically via `webServer` in `playwright.config.ts`). Auth is injected via `e2e/auth.setup.ts` which auto-refreshes a hardcoded Supabase refresh token — no env var needed.
+E2E tests require the dev server running on `http://localhost:5174` (started automatically via `webServer` in `playwright.config.ts`). They sign in as a dedicated test user with email + password, read from the environment by `e2e/auth.setup.ts`: `E2E_SUPABASE_URL`, `E2E_SUPABASE_KEY`, `E2E_EMAIL`, `E2E_PASSWORD`. When any is missing the authenticated tests skip. Never commit credentials or tokens to `e2e/`.
 
 ## Git Workflow
 
@@ -55,7 +55,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `ProjectionRow` — one derived month of the table; never stored. Fields include `incomeAdjustment`, `expenseAdjustment` (user one-time only), and `savingsContribution` (savings goals portion, kept separate)
 - `UiStateSnapshot` — theme, locale, currency, start month; stored in `profiles` table
 
-**Computation is pure and stateless** — `src/services/projectionService.ts` takes inputs and returns rows, summary, milestones, SVG trend path, and share text. Nothing in services touches stores or Supabase.
+**Computation is pure and stateless** — `src/services/projectionService.ts` takes inputs and returns rows, summary, milestones, and share text. Nothing in services touches stores or Supabase.
 
 **Row mapping** — `src/services/mappers.ts` is the only place database rows / JSON columns are turned into domain models. Fetches, Realtime payloads and broadcasts all use it; do not hand-map rows elsewhere.
 
@@ -102,16 +102,16 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 **Component structure:**
 - `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages
 - `src/components/shared/` — reusable UI: `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
-- `src/components/dashboard/` — `TrendChart` (cumulative line + monthly income-vs-expenses bar toggle), `MilestonesCard`
+- `src/components/dashboard/` — `TrendChart` (cash / net-worth lines + monthly income-vs-expenses columns, with axes and a hover/keyboard readout; geometry helpers in `src/services/chartService.ts`), `CategoryBreakdown`, `GettingStarted` (first-run guide), `MilestonesCard`
 - `src/components/projections/` — `ProjectionTable`, `ItemsDialog`
-- `src/components/scenarios/` — `ScenarioCard`
+- `src/components/scenarios/` — `ScenarioCard`, `ScenarioComparison`
 
 **Page layouts:**
 - `DashboardView` — header + summary strip + 2-column grid (`1.5fr / 1fr`): TrendChart left, insights + MilestonesCard right. Mobile stacks to 1 column.
 - `ProjectionsView` — header + summary strip + 2-column grid (`280px / 1fr`): sticky config panel left (income/expenses inputs + settings), full-width `ProjectionTable` right. Mobile stacks to 1 column.
 
 **CSS / styling:**
-- Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`)
+- Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`). Chart series use `--chart-1` / `--chart-2`, a pair checked for colour-blind separation and contrast in both themes — do not substitute status colours (`--app-positive` / `--app-negative`) for series.
 - Dark mode via `html.app-dark` selector; PrimeVue dark mode selector set to `.app-dark`
 - Use Tailwind for layout/spacing; use `.text-primary`, `.text-secondary`, `.divider`, `.border-app`, `.bg-surface` utility classes (defined in `style.css`) instead of inline `style=""` for token-based colors
 - PrimeVue component overrides are in the `/* PrimeVue overrides */` section of `style.css`

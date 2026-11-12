@@ -90,7 +90,13 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               'ptable-row-interactive': !readonly,
               'ptable-row-open': expandedMonthKey === row.monthKey,
             }"
+            :tabindex="readonly ? undefined : 0"
+            :role="readonly ? undefined : 'button'"
+            :aria-expanded="readonly ? undefined : expandedMonthKey === row.monthKey"
+            :aria-label="readonly ? undefined : `Adjust ${row.monthLabel}`"
             @click="!readonly && toggleExpand(row.monthKey)"
+            @keydown.enter.self.prevent="!readonly && toggleExpand(row.monthKey)"
+            @keydown.space.self.prevent="!readonly && toggleExpand(row.monthKey)"
           >
             <!-- Left accent bar -->
             <td
@@ -163,6 +169,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
             <!-- Chevron -->
             <td v-if="!readonly" class="ptable-chevron-cell">
               <i
+                aria-hidden="true"
                 class="pi ptable-chevron"
                 :class="expandedMonthKey === row.monthKey ? 'pi-chevron-up' : 'pi-chevron-down'"
               />

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildProjectionRows,
   buildProjectionSummary,
-  buildProjectionTrendPath,
   buildProjectionMilestones,
   buildProjectionShareSummary,
 } from './projectionService'
@@ -133,24 +132,6 @@ describe('projectionService', () => {
       endingSavings: 5800,
       endingNetWorth: 8000,
     })
-  })
-
-  it('builds a trend path for chart rendering', () => {
-    const rows = buildProjectionRows(
-      {
-        monthlyIncome: 3000,
-        monthlyExpenses: 2500,
-        months: 3,
-        incomeItems: [],
-        expenseItems: [],
-        monthlyAdjustments: [],
-      },
-      '2026-01',
-      'en-US',
-    )
-
-    expect(buildProjectionTrendPath(rows, 320, 120)).toMatch(/^M /)
-    expect(buildProjectionTrendPath(rows, 320, 120)).toContain('L')
   })
 
   it('extracts milestone labels from projection rows', () => {

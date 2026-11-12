@@ -81,37 +81,6 @@ export const buildProjectionSummary = (
   }
 }
 
-export const buildProjectionTrendPath = (
-  rows: ProjectionRow[],
-  width: number,
-  height: number,
-  padding = 10,
-): string => {
-  if (!rows.length) {
-    return ''
-  }
-
-  if (rows.length === 1) {
-    const centerY = height / 2
-    return `M ${padding} ${centerY} L ${width - padding} ${centerY}`
-  }
-
-  const balances = rows.map((row) => row.cumulativeBalance)
-  const minBalance = Math.min(...balances)
-  const maxBalance = Math.max(...balances)
-  const range = maxBalance - minBalance || 1
-  const availableWidth = width - padding * 2
-  const availableHeight = height - padding * 2
-
-  return balances
-    .map((balance, index) => {
-      const x = padding + (availableWidth * index) / (balances.length - 1)
-      const y = height - padding - ((balance - minBalance) / range) * availableHeight
-      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
-}
-
 export const buildProjectionMilestones = (rows: ProjectionRow[]) => {
   const firstNegativeRow = rows.find((row) => row.cumulativeBalance < 0) ?? null
   const highestBalanceRow = rows.reduce<ProjectionRow | null>((best, row) => {

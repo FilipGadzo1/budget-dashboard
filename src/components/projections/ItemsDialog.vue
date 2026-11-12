@@ -240,7 +240,7 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
             <button
               class="btn btn-ghost btn-icon shrink-0"
               :class="hasDetails(item) ? 'item-details-on' : 'text-secondary'"
-              :title="expanded.has(item.id) ? 'Hide schedule' : 'Schedule and category'"
+              :title="expanded.has(item.id) ? 'Hide schedule' : 'Schedule and category'" aria-label="expanded.has(item.id) ? 'Hide schedule' : 'Schedule and category'"
               :aria-expanded="expanded.has(item.id)"
               @click="toggleDetails(item.id)"
             >
@@ -248,7 +248,7 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
             </button>
             <button
               class="btn btn-ghost btn-icon shrink-0 text-secondary hover:text-negative"
-              title="Remove"
+              title="Remove" aria-label="Remove"
               @click="removeItem(index)"
             >
               <i class="pi pi-times text-xs" />
