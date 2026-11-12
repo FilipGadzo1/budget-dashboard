@@ -174,6 +174,34 @@ export const useProjectionStore = defineStore('projection', () => {
     }
   }
 
+  // Clears the plan itself — starting balance, income, expenses, their items,
+  // one-time adjustments and the projection length — back to a blank budget.
+  // Saved scenarios and the budget's base currency are kept; no scenario is
+  // "active" afterwards because the inputs no longer match any of them.
+  const resetInputs = async (): Promise<void> => {
+    clearTimeout(inputsSaveTimer)
+    clearTimeout(expenseItemsSaveTimer)
+    clearTimeout(adjustmentsSaveTimer)
+    const userId = getEffectiveUserId()
+    const blank: ProjectionInputs = {
+      ...defaultProjectionInputs,
+      incomeItems: [],
+      expenseItems: [],
+      monthlyAdjustments: [],
+      startingBalance: 0,
+      startingBalanceCurrency: undefined,
+      currency: snapshot.value.inputs.currency,
+    }
+    snapshot.value = { ...snapshot.value, inputs: blank, activeScenarioId: null }
+    if (userId) {
+      await Promise.all([
+        saveProjectionInputs(userId, blank),
+        syncExpenseItems(userId, []),
+        setActiveScenario(userId, null),
+      ])
+    }
+  }
+
   const saveScenario = (name?: string): ProjectionScenario => {
     const scenario: ProjectionScenario = {
       id: crypto.randomUUID(),
@@ -438,6 +466,7 @@ export const useProjectionStore = defineStore('projection', () => {
     setExpenseItems,
     setMonthlyAdjustments,
     reset,
+    resetInputs,
     saveScenario,
     loadScenario,
     renameScenario,

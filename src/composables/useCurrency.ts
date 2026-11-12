@@ -33,13 +33,16 @@ export const useCurrency = () => {
 
   const formatCurrency = (value: number): string => formatMoney(value)
 
-  const formatCompactCurrency = (value: number): string =>
+  /** Compact form (€5.9K) in the given currency (default: the display currency). */
+  const formatCompactMoney = (value: number, currency?: string | null): string =>
     new Intl.NumberFormat(locale.value, {
       style: 'currency',
-      currency: currencyCode.value,
+      currency: currency || currencyCode.value,
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(value)
+
+  const formatCompactCurrency = (value: number): string => formatCompactMoney(value)
 
   /** Converts an amount entered in `from` (default: display currency) to the display currency. */
   const toDisplay = (amount: number, from?: string | null): number =>
@@ -56,6 +59,7 @@ export const useCurrency = () => {
     formatMoney,
     formatCurrency,
     formatCompactCurrency,
+    formatCompactMoney,
     toDisplay,
     canShow,
     convert,

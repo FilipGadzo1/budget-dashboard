@@ -2,9 +2,10 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import Dialog from 'primevue/dialog'
-import InputNumber from 'primevue/inputnumber'
 
 import CurrencyInput from '@/components/shared/CurrencyInput.vue'
+import ConfirmDeleteDialog from '@/components/shared/ConfirmDeleteDialog.vue'
+import DatePickerField from '@/components/shared/DatePickerField.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
@@ -19,6 +20,7 @@ import { buildProjectionShareSummary } from '@/services/projectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useUiStore } from '@/stores/ui'
+import { addMonthsToKey, formatCompactMonthYear, monthsBetween } from '@/utils/date'
 import { buildErrorMap, projectionSchema } from '@/validation/forms'
 
 const { getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
@@ -55,6 +57,8 @@ const form = reactive({
   months: projectionStore.inputs.months,
 })
 const formErrors = reactive<Record<string, string>>({})
+
+const MAX_MONTHS = 60
 
 const incomeItems = computed(() => projectionStore.inputs.incomeItems)
 const hasIncomeItems = computed(() => incomeItems.value.length > 0)
@@ -163,6 +167,55 @@ const selectedMonth = computed({
   },
 })
 
+// ── Projection window: a start month and an end month ──────────────────────
+// The store keeps a start month and a length in months; the end month is derived
+// from those, and editing either end adjusts the length.
+const clampMonths = (count: number): number => Math.min(MAX_MONTHS, Math.max(1, count))
+
+const endMonth = computed({
+  get: () => addMonthsToKey(selectedMonth.value, Math.max(1, form.months) - 1),
+  set: (val: string) => {
+    if (val) form.months = clampMonths(monthsBetween(selectedMonth.value, val) + 1)
+  },
+})
+
+// Moving the start keeps the end where it is (the window gets shorter or longer)
+const startMonth = computed({
+  get: () => selectedMonth.value,
+  set: (val: string) => {
+    if (!val) return
+    const end = endMonth.value
+    selectedMonth.value = val
+    form.months = clampMonths(monthsBetween(val, end) + 1)
+  },
+})
+
+const latestEndMonth = computed(() => addMonthsToKey(selectedMonth.value, MAX_MONTHS - 1))
+
+const settingsOpen = ref(false)
+const settingsSummary = computed(
+  () => `${formatCompactMonthYear(selectedMonth.value, locale.value)} → ${formatCompactMonthYear(endMonth.value, locale.value)} · ${currencyCode.value}`,
+)
+
+// ── Reset ────────────────────────────────────────────────────────────────────
+const showResetDialog = ref(false)
+const resetting = ref(false)
+
+const resetProjections = async (): Promise<void> => {
+  resetting.value = true
+  try {
+    await projectionStore.resetInputs()
+    // Start again from this month (the setter also handles a shared budget)
+    const now = new Date()
+    selectedMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    settingsOpen.value = false
+    shareState.message = 'Projections reset.'
+    shareState.tone = 'neutral'
+  } finally {
+    resetting.value = false
+  }
+}
+
 const clearErrors = (): void => {
   Object.keys(formErrors).forEach((key) => delete formErrors[key])
 }
@@ -267,54 +320,6 @@ const downloadShareSummary = (): void => {
       <i class="pi pi-exclamation-triangle text-xs" />
       Exchange rates are unavailable, so amounts in {{ unconvertibleCurrencies.join(', ') }} are shown unconverted and totals are wrong.
     </p>
-
-    <!-- ── Summary strip ─────────────────────────────────────────── -->
-    <div class="card card-sm proj-summary">
-      <div class="proj-summary-items">
-        <div class="proj-summary-item">
-          <span class="proj-summary-label">Total Income</span>
-          <span class="proj-summary-value text-positive">{{ formatCompactCurrency(projectionSummary.totalIncome) }}</span>
-        </div>
-        <div class="proj-summary-sep" />
-        <div class="proj-summary-item">
-          <span class="proj-summary-label">Total Expenses</span>
-          <span class="proj-summary-value">{{ formatCompactCurrency(projectionSummary.totalExpenses) }}</span>
-        </div>
-        <div class="proj-summary-sep" />
-        <div class="proj-summary-item">
-          <span class="proj-summary-label">Monthly Net</span>
-          <span
-            class="proj-summary-value"
-            :class="projectionSummary.totalNet >= 0 ? 'text-positive' : 'text-negative'"
-          >
-            {{ formatCompactCurrency(projectionSummary.totalNet / Math.max(1, form.months)) }}/mo
-          </span>
-        </div>
-        <div class="proj-summary-sep" />
-        <div class="proj-summary-item">
-          <span class="proj-summary-label">Ending Cash</span>
-          <span
-            class="proj-summary-value"
-            :class="projectionSummary.endingBalance >= 0 ? 'text-positive' : 'text-negative'"
-          >
-            {{ formatCompactCurrency(projectionSummary.endingBalance) }}
-          </span>
-        </div>
-        <template v-if="hasSavings">
-          <div class="proj-summary-sep" />
-          <div class="proj-summary-item">
-            <span class="proj-summary-label">Net Worth</span>
-            <span
-              class="proj-summary-value"
-              :class="projectionSummary.endingNetWorth >= 0 ? 'text-positive' : 'text-negative'"
-              title="Ending cash plus savings"
-            >
-              {{ formatCompactCurrency(projectionSummary.endingNetWorth) }}
-            </span>
-          </div>
-        </template>
-      </div>
-    </div>
 
     <!-- ── Main 2-col layout ────────────────────────────────────── -->
     <div class="proj-main">
@@ -435,33 +440,36 @@ const downloadShareSummary = (): void => {
 
         <div class="proj-config-divider" />
 
-        <!-- Settings -->
+        <!-- Settings: folded by default, current values on one line -->
+        <button
+          class="proj-settings-toggle"
+          :aria-expanded="settingsOpen"
+          aria-controls="proj-settings"
+          @click="settingsOpen = !settingsOpen"
+        >
+          <span class="proj-settings-title">Settings</span>
+          <span v-if="!settingsOpen" class="proj-settings-summary">{{ settingsSummary }}</span>
+          <i class="pi text-xs" :class="settingsOpen ? 'pi-chevron-up' : 'pi-chevron-down'" aria-hidden="true" />
+        </button>
+
+        <div v-show="settingsOpen" id="proj-settings" class="proj-settings">
         <div class="proj-field">
           <label class="form-label" for="start-month">Start month</label>
-          <input
-            id="start-month"
-            v-model="selectedMonth"
-            type="month"
-            class="form-select"
-            :disabled="collabStore.isReadOnly"
-          />
+          <DatePickerField input-id="start-month" v-model="startMonth" :disabled="collabStore.isReadOnly" />
         </div>
 
         <div class="proj-field">
-          <label class="form-label" for="months">Horizon (months)</label>
-          <InputNumber
-            id="months"
-            v-model="form.months"
-            :min="1"
-            :max="60"
-            :min-fraction-digits="0"
-            :max-fraction-digits="0"
-            :use-grouping="false"
-            :class="{ 'app-input-invalid': formErrors.months }"
+          <label class="form-label" for="end-month">End month</label>
+          <DatePickerField
+            input-id="end-month"
+            v-model="endMonth"
+            :min="selectedMonth"
+            :max="latestEndMonth"
+            :invalid="!!formErrors.months"
             :disabled="collabStore.isReadOnly"
-            fluid
           />
           <p v-if="formErrors.months" class="form-error">{{ formErrors.months }}</p>
+          <p v-else class="proj-meta-note">{{ form.months }} month{{ form.months === 1 ? '' : 's' }} · up to {{ MAX_MONTHS }}</p>
         </div>
 
         <div class="proj-field">
@@ -481,6 +489,17 @@ const downloadShareSummary = (): void => {
             </button>
           </div>
         </div>
+        </div>
+
+        <button
+          v-if="!collabStore.isReadOnly"
+          class="proj-reset"
+          :disabled="resetting"
+          @click="showResetDialog = true"
+        >
+          <i class="pi pi-refresh text-xs" aria-hidden="true" />
+          Reset projections
+        </button>
 
       </div>
 
@@ -489,6 +508,8 @@ const downloadShareSummary = (): void => {
         <ProjectionTable
           :rows="projectionRows"
           :format-currency="formatCurrency"
+          :format-compact="formatCompactCurrency"
+          :locale="locale"
           :adjustments="monthlyAdjustments"
           :readonly="collabStore.isReadOnly"
           :show-net-worth="hasSavings"
@@ -523,6 +544,14 @@ const downloadShareSummary = (): void => {
       :to-display="toDisplay"
       :start-month="selectedMonth"
       @update:model-value="onExpenseItemsUpdate"
+    />
+
+    <ConfirmDeleteDialog
+      v-model:visible="showResetDialog"
+      title="Reset projections"
+      message="This clears your starting balance, income, expenses, every income source and expense item, and all one-time adjustments, and starts a new 12-month projection from this month. Saved scenarios and savings goals are kept. This cannot be undone."
+      confirm-label="Reset projections"
+      @confirm="resetProjections"
     />
 
     <Dialog
@@ -582,48 +611,6 @@ const downloadShareSummary = (): void => {
   font-size: 0.6875rem;
 }
 
-/* ─── Summary strip ───────────────────────────────────────────── */
-.proj-summary-items {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex-wrap: wrap;
-}
-
-.proj-summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.25rem 1.5rem 0.25rem 0;
-  flex: 1;
-  min-width: 120px;
-}
-
-.proj-summary-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--app-text-secondary);
-  white-space: nowrap;
-}
-
-.proj-summary-value {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--app-text);
-  font-family: 'DM Mono', monospace;
-  font-weight: 400;
-}
-
-.proj-summary-sep {
-  width: 1px;
-  height: 2.5rem;
-  background: var(--app-border);
-  margin: 0 1.5rem 0 0;
-  flex-shrink: 0;
-}
-
 /* ─── Main 2-col ──────────────────────────────────────────────── */
 .proj-main {
   display: grid;
@@ -639,6 +626,74 @@ const downloadShareSummary = (): void => {
   gap: 1rem;
   position: sticky;
   top: 1rem;
+}
+
+.proj-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.proj-settings-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.proj-settings-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proj-settings-toggle .pi {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.proj-settings-summary + .pi {
+  margin-left: 0;
+}
+
+.proj-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.proj-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+}
+
+.proj-reset:hover:not(:disabled) {
+  color: var(--app-negative);
+}
+
+.proj-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .proj-config-divider {
@@ -780,25 +835,6 @@ const downloadShareSummary = (): void => {
 
   .proj-config-divider {
     margin: 0 -1rem;
-  }
-
-  .proj-summary-items {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-
-  .proj-summary-sep {
-    display: none;
-  }
-
-  .proj-summary-item {
-    padding: 0;
-    min-width: 0;
-  }
-
-  .proj-summary-value {
-    font-size: 1rem;
   }
 
   .proj-table-section {
