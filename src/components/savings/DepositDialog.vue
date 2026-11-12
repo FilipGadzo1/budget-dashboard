@@ -5,6 +5,7 @@ import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 
+import DatePickerField from '@/components/shared/DatePickerField.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import type { SavingsDeposit, SavingsGoal } from '@/models'
 import { computeProgress } from '@/services/savingsService'
@@ -150,12 +151,7 @@ const formatDate = (iso: string): string => {
         <!-- Date -->
         <div class="form-field">
           <label class="form-label" for="dep-date">Date</label>
-          <input
-            id="dep-date"
-            v-model="form.depositDate"
-            type="date"
-            class="form-date-input"
-          />
+          <DatePickerField input-id="dep-date" v-model="form.depositDate" mode="date" />
         </div>
 
         <!-- Note -->
@@ -285,24 +281,6 @@ const formatDate = (iso: string): string => {
 .deposit-sign-hint {
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.form-date-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 6px;
-  background: var(--app-surface);
-  color: var(--app-text);
-  font-size: 0.875rem;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s;
-  color-scheme: inherit;
-}
-
-.form-date-input:focus {
-  border-color: var(--app-accent);
 }
 
 .deposit-history-title {

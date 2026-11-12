@@ -62,4 +62,34 @@ describe('projection store persistence', () => {
     expect(store.inputs.incomeItems).toEqual([{ id: 'salary', name: 'Salary', amount: 5000 }])
     expect(store.inputs.expenseItems).toHaveLength(1)
   })
+
+  it('resets the plan but keeps saved scenarios and the base currency', async () => {
+    const store = useProjectionStore()
+    store.setInputs({ monthlyIncome: 5000, monthlyExpenses: 3000, months: 24, startingBalance: 1500, currency: 'SEK' })
+    store.setIncomeItems([{ id: 'salary', name: 'Salary', amount: 5000 }])
+    store.setExpenseItems([{ id: 'rent', name: 'Rent', amount: 1200, sortOrder: 0 }])
+    store.setMonthlyAdjustments([{ id: 'a', monthKey: '2026-06', incomeAdjustment: 0, expenseAdjustment: 800 }])
+    store.saveScenario('Keep me')
+    vi.clearAllMocks()
+
+    await store.resetInputs()
+
+    expect(store.inputs).toMatchObject({
+      monthlyIncome: 0,
+      monthlyExpenses: 0,
+      months: 12,
+      startingBalance: 0,
+      incomeItems: [],
+      expenseItems: [],
+      monthlyAdjustments: [],
+      currency: 'SEK',
+    })
+    expect(store.savedScenarios).toHaveLength(1)
+    expect(store.activeScenarioId).toBeNull()
+
+    expect(db.syncExpenseItems).toHaveBeenCalledWith('owner-1', [])
+    expect(db.setActiveScenario).toHaveBeenCalledWith('owner-1', null)
+    expect(db.deleteAllScenarios).not.toHaveBeenCalled()
+    expect(db.saveProjectionInputs).toHaveBeenCalledWith('owner-1', expect.objectContaining({ monthlyIncome: 0, months: 12 }))
+  })
 })

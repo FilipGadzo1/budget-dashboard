@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePrimeVue } from 'primevue/config'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { onMounted, watch } from 'vue'
@@ -19,6 +20,16 @@ const savingsStore = useSavingsStore()
 const collabStore = useCollaborationStore()
 const router = useRouter()
 const toast = useToast()
+const primevue = usePrimeVue()
+
+// Calendars start the week on Monday, except for the US locale (Sunday)
+watch(
+  () => uiStore.locale,
+  (locale) => {
+    if (primevue.config.locale) primevue.config.locale.firstDayOfWeek = locale === 'en-US' ? 0 : 1
+  },
+  { immediate: true },
+)
 const { fetchRates } = useExchangeRates()
 
 // Failed writes are reported by the service layer; show them instead of failing silently.

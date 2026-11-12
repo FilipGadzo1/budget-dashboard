@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 
 import type { MonthAdjustment, ProjectionRow } from '@/models'
+import { formatShortMonth } from '@/utils/date'
 
 const props = defineProps<{
   rows: ProjectionRow[]
+  /** Exact amount — used for tooltips and the adjustment panel. */
   formatCurrency: (n: number) => string
+  /** Compact amount (€5.9K) — what the cells show. */
+  formatCompact: (n: number) => string
+  locale: string
   adjustments: MonthAdjustment[]
   readonly?: boolean
   /** Show the net-worth column (only useful when the budget has savings). */
@@ -63,9 +68,32 @@ const isAdjusted = (row: ProjectionRow): boolean =>
   row.incomeAdjustment !== 0 || row.expenseAdjustment !== 0
 
 const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
+
+// Rows grouped by calendar year, each with that year's total net
+const yearGroups = computed(() => {
+  const groups: Array<{ year: string; net: number; rows: ProjectionRow[] }> = []
+  props.rows.forEach((row) => {
+    const year = row.monthKey.slice(0, 4)
+    let group = groups.at(-1)
+    if (!group || group.year !== year) {
+      group = { year, net: 0, rows: [] }
+      groups.push(group)
+    }
+    group.net += row.net
+    group.rows.push(row)
+  })
+  return groups
+})
+
+const columnCount = computed(() => (props.readonly ? 6 : 7) + (props.showNetWorth ? 1 : 0))
+const anySavings = computed(() => props.rows.some(hasSavings))
+const anyAdjusted = computed(() => props.rows.some(isAdjusted))
+
+const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') + text
 </script>
 
 <template>
+  <div class="ptable-wrap">
   <div class="ptable-scroll">
     <table class="ptable">
       <thead class="ptable-head">
@@ -81,7 +109,19 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
         </tr>
       </thead>
       <tbody>
-        <template v-for="row in rows" :key="row.monthKey">
+        <template v-for="group in yearGroups" :key="group.year">
+
+          <!-- ── Year header ───────────────────────────────────── -->
+          <tr class="ptable-year-row">
+            <td :colspan="columnCount" class="ptable-year-cell">
+              <span class="ptable-year">{{ group.year }}</span>
+              <span class="ptable-year-net" :title="`Net for ${group.year}: ${signed(group.net, formatCurrency(group.net))}`">
+                net {{ signed(group.net, formatCompact(group.net)) }}
+              </span>
+            </td>
+          </tr>
+
+        <template v-for="row in group.rows" :key="row.monthKey">
 
           <!-- ── Main row ──────────────────────────────────────── -->
           <tr
@@ -110,33 +150,30 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 
             <!-- Month -->
             <td class="ptable-month-cell">
-              <span class="ptable-month-name">{{ row.monthLabel }}</span>
-              <div class="ptable-month-badges">
-                <span v-if="isAdjusted(row)" class="ptable-adj-badge" title="Has one-time adjustment" />
-                <span v-if="hasSavings(row)" class="ptable-savings-badge" title="Money moves into savings this month">
-                  <i class="pi pi-wallet" />
-                </span>
-              </div>
+              <span class="ptable-month-name" :title="row.monthLabel">{{ formatShortMonth(row.monthKey, locale) }}</span>
+              <span v-if="isAdjusted(row)" class="ptable-adj-badge" :title="row.adjustmentNote || 'Has a one-time adjustment'" />
             </td>
 
             <!-- Income -->
             <td class="ptable-num-cell">
-              <span class="ptable-num">{{ formatCurrency(row.income) }}</span>
+              <span class="ptable-num" :title="formatCurrency(row.income)">{{ formatCompact(row.income) }}</span>
               <span
                 v-if="row.incomeAdjustment !== 0"
                 class="ptable-delta"
                 :class="row.incomeAdjustment > 0 ? 'ptable-delta-pos' : 'ptable-delta-neg'"
-              >{{ row.incomeAdjustment > 0 ? '+' : '' }}{{ formatCurrency(row.incomeAdjustment) }}</span>
+                :title="formatCurrency(row.incomeAdjustment)"
+              >{{ signed(row.incomeAdjustment, formatCompact(row.incomeAdjustment)) }}</span>
             </td>
 
             <!-- Expenses -->
             <td class="ptable-num-cell">
-              <span class="ptable-num">{{ formatCurrency(row.expenses) }}</span>
+              <span class="ptable-num" :title="formatCurrency(row.expenses)">{{ formatCompact(row.expenses) }}</span>
               <span
                 v-if="row.expenseAdjustment !== 0"
                 class="ptable-delta"
                 :class="row.expenseAdjustment > 0 ? 'ptable-delta-neg' : 'ptable-delta-pos'"
-              >{{ row.expenseAdjustment > 0 ? '+' : '' }}{{ formatCurrency(row.expenseAdjustment) }}</span>
+                :title="formatCurrency(row.expenseAdjustment)"
+              >{{ signed(row.expenseAdjustment, formatCompact(row.expenseAdjustment)) }}</span>
             </td>
 
             <!-- Net -->
@@ -144,10 +181,8 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               <span
                 class="ptable-net"
                 :class="row.net >= 0 ? 'ptable-net-pos' : 'ptable-net-neg'"
-              >{{ row.net >= 0 ? '+' : '' }}{{ formatCurrency(row.net) }}</span>
-              <span v-if="hasSavings(row)" class="ptable-savings-line" title="Moved from cash into savings">
-                <i class="pi pi-wallet" />{{ formatCurrency(row.savingsContribution) }} to savings
-              </span>
+                :title="formatCurrency(row.net)"
+              >{{ signed(row.net, formatCompact(row.net)) }}</span>
             </td>
 
             <!-- Cumulative balance -->
@@ -155,7 +190,14 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               <span
                 class="ptable-num"
                 :class="row.cumulativeBalance < 0 ? 'ptable-bal-neg' : ''"
-              >{{ formatCurrency(row.cumulativeBalance) }}</span>
+                :title="formatCurrency(row.cumulativeBalance)"
+              >{{ formatCompact(row.cumulativeBalance) }}</span>
+              <!-- A transfer out of cash, shown where the money leaves -->
+              <span
+                v-if="hasSavings(row)"
+                class="ptable-savings-line"
+                :title="`${formatCurrency(row.savingsContribution)} moved from cash into savings`"
+              >−{{ formatCompact(row.savingsContribution) }}<span class="ptable-savings-word"> to savings</span></span>
             </td>
 
             <!-- Net worth (cash + savings) -->
@@ -163,7 +205,8 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               <span
                 class="ptable-num"
                 :class="row.netWorth < 0 ? 'ptable-bal-neg' : ''"
-              >{{ formatCurrency(row.netWorth) }}</span>
+                :title="formatCurrency(row.netWorth)"
+              >{{ formatCompact(row.netWorth) }}</span>
             </td>
 
             <!-- Chevron -->
@@ -181,7 +224,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
             v-if="expandedMonthKey === row.monthKey && !readonly"
             class="ptable-expand-row"
           >
-            <td :colspan="(readonly ? 6 : 7) + (showNetWorth ? 1 : 0)" class="ptable-expand-cell">
+            <td :colspan="columnCount" class="ptable-expand-cell">
               <div class="ptable-panel">
                 <p class="ptable-panel-title">
                   Adjust <strong>{{ row.monthLabel }}</strong>
@@ -245,8 +288,23 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
           </tr>
 
         </template>
+        </template>
       </tbody>
     </table>
+  </div>
+
+    <!-- Legend -->
+    <div v-if="anySavings || anyAdjusted" class="ptable-legend">
+      <span v-if="anySavings" class="ptable-legend-item">
+        <span class="ptable-legend-dot ptable-legend-dot-savings" />
+        Moved to savings — still yours, not an expense
+      </span>
+      <span v-if="anyAdjusted" class="ptable-legend-item">
+        <span class="ptable-legend-dot ptable-legend-dot-adj" />
+        One-time adjustment
+      </span>
+      <span class="ptable-legend-item ptable-legend-hint">Hover an amount for the exact figure</span>
+    </div>
   </div>
 </template>
 
@@ -282,7 +340,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 }
 
 .ptable-th {
-  padding: 0.6875rem 1rem;
+  padding: 0.5rem 1rem;
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -350,7 +408,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 
 /* ─── Month cell ──────────────────────────────────────────────── */
 .ptable-month-cell {
-  padding: 0.875rem 0.75rem 0.875rem 0.75rem;
+  padding: 5px 0.75rem;
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -364,13 +422,6 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
   font-size: 0.8125rem;
 }
 
-.ptable-month-badges {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
-
 .ptable-adj-badge {
   display: inline-block;
   width: 6px;
@@ -380,37 +431,75 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
   flex-shrink: 0;
 }
 
-.ptable-savings-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.575rem;
-  color: var(--app-accent);
-  opacity: 0.65;
-  flex-shrink: 0;
-}
-
-.ptable-savings-line .pi {
-  font-size: 0.6rem;
-  margin-right: 0.25rem;
-}
-
+/* Transfer to savings: the blue series colour, so it reads as neither a gain
+   (green) nor a loss (red) */
 .ptable-savings-line {
   display: block;
   font-family: 'DM Mono', monospace;
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
-  color: var(--app-accent);
-  opacity: 0.85;
-  margin-top: 2px;
+  color: var(--chart-2);
+  margin-top: 1px;
+}
+
+/* ─── Year header ─────────────────────────────────────────────── */
+.ptable-year-cell {
+  padding: 0.3125rem 1rem 0.3125rem 0.75rem;
+  background: var(--app-surface-hover);
+  border-bottom: 1px solid var(--app-border);
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+}
+
+.ptable-year {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.ptable-year-net {
+  float: right;
+  font-family: 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Legend ──────────────────────────────────────────────────── */
+.ptable-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0.875rem;
+  border-top: 1px solid var(--app-border);
+  font-size: 0.71875rem;
+  color: var(--app-text-secondary);
+}
+
+.ptable-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.ptable-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ptable-legend-dot-savings { background: var(--chart-2); }
+.ptable-legend-dot-adj { background: var(--app-warning, #f59e0b); }
+
+.ptable-legend-hint {
+  margin-left: auto;
+  color: var(--app-text-tertiary);
 }
 
 /* ─── Number cells ────────────────────────────────────────────── */
 .ptable-num-cell {
-  padding: 0.875rem 1rem;
+  padding: 5px 1rem;
   text-align: right;
   white-space: nowrap;
   vertical-align: top;
-  padding-top: 0.9375rem;
 }
 
 .ptable-num {
@@ -448,7 +537,8 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 
 /* ─── Chevron ─────────────────────────────────────────────────── */
 .ptable-chevron-cell {
-  padding: 0.875rem 0.875rem 0.875rem 0;
+  padding: 5px 0.875rem 5px 0;
+  vertical-align: middle;
   text-align: right;
   width: 2.5rem;
 }
@@ -522,16 +612,31 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
 
 /* ─── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 1023px) {
+  /* Tighter columns so Cash stays on screen at phone width */
+  .ptable-th {
+    padding: 0.5rem 0.4375rem;
+  }
+
+  .ptable-legend-hint {
+    display: none;
+  }
+
+  /* Phone: the blue amount alone (the legend says what it is), so the Cash
+     column stays narrow enough to fit */
+  .ptable-savings-word {
+    display: none;
+  }
+
   .ptable-month-cell {
-    padding: 0.75rem 0.625rem 0.75rem 0.625rem;
+    padding: 5px 0.625rem;
   }
 
   .ptable-num-cell {
-    padding: 0.75rem 0.75rem;
+    padding: 5px 0.4375rem;
   }
 
   .ptable-chevron-cell {
-    padding: 0.75rem 0.625rem 0.75rem 0;
+    padding: 5px 0.625rem 5px 0;
   }
 }
 </style>

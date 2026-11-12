@@ -5,6 +5,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 
 import CurrencyInput from '@/components/shared/CurrencyInput.vue'
+import DatePickerField from '@/components/shared/DatePickerField.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import { currencyOptions, expenseCategories } from '@/data/defaults'
 import type { BudgetItem } from '@/models'
@@ -277,15 +278,16 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
             </label>
             <label class="item-detail">
               <span class="item-detail-label">{{ (item.everyMonths ?? 1) > 1 ? 'First month' : 'From' }}</span>
-              <input v-model="draft[index].startMonth" type="month" class="form-select" />
+              <DatePickerField v-model="draft[index].startMonth" placeholder="Always" clearable />
             </label>
             <label class="item-detail">
               <span class="item-detail-label">Until</span>
-              <input
+              <DatePickerField
                 v-model="draft[index].endMonth"
-                type="month"
-                class="form-select"
-                :class="{ 'item-invalid': endBeforeStart(item) }"
+                placeholder="No end"
+                :min="item.startMonth"
+                :invalid="endBeforeStart(item)"
+                clearable
               />
             </label>
             <p v-if="endBeforeStart(item)" class="form-error item-details-error">
@@ -385,7 +387,7 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
 
 .item-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
   gap: 0.5rem;
   padding: 0.625rem;
   border: 1px solid var(--app-border);
@@ -411,10 +413,6 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
 .item-detail .form-select {
   width: 100%;
   min-width: 0;
-}
-
-.item-invalid {
-  border-color: var(--app-negative);
 }
 
 .item-details-error {

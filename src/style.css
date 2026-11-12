@@ -835,6 +835,7 @@ button, input, select, textarea {
 }
 
 .p-dialog,
+.p-datepicker-panel,
 .p-select-overlay,
 .p-toast-message {
   border-radius: 12px !important;

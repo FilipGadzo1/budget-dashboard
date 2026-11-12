@@ -85,7 +85,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `SavingsGoal` has `monthlyContribution` and `targetDate` (nullable ISO date). `buildSavingsContributionAdjustments(goals, startMonth, months)` returns the planned transfers per month: a goal contributes while `status === 'active'`, its target date has not passed, and it has not reached its target (the last contribution is trimmed to land exactly on target).
 - `savingsStartingBalance(goals)` (sum of every goal's `currentAmount`) is the opening savings balance. Recorded **deposits are history**: they are already in `currentAmount` and are not replayed as cash movements in the projection.
 - `useEffectiveProjection` puts both on the inputs as the system-generated fields `savingsAdjustments` and `savingsStartingBalance`, separate from the user's `monthlyAdjustments`.
-- In `ProjectionTable`, a month with a transfer shows a wallet sub-line under **Net** and a wallet badge in the Month cell; the **Net worth** column appears only when the budget has savings (`showNetWorth`). User one-time adjustments keep the amber badge/delta (`row.expenseAdjustment !== 0`).
+- In `ProjectionTable`, a month with a transfer shows a blue (`--chart-2`) sub-line under **Cash** written as a deduction ("−€400 to savings") — blue because it is neither a gain (green) nor a loss (red); a legend under the table explains it. The **Net worth** column appears only when the budget has savings (`showNetWorth`). User one-time adjustments keep the amber dot/delta (`row.expenseAdjustment !== 0`). Rows are grouped under a header per calendar year showing that year's net.
 
 **Recurring items and categories** (`src/services/itemsService.ts`):
 - `BudgetItem` is the shared shape of income and expense items (`ExpenseItem` adds `sortOrder`). An item has optional `everyMonths` (1 = monthly, 12 = yearly), `startMonth` / `endMonth` (YYYY-MM, inclusive) and, for expenses, `category`. For non-monthly items `startMonth` is also the anchor month.
@@ -94,6 +94,10 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `ItemsDialog` (`src/components/projections/`) is the single dialog for both income sources and expense items (`kind` prop). It uses a local `draft`; nothing reaches the store until **Save**.
 - `useEffectiveProjection().projectPlan(inputs)` projects any inputs (e.g. a saved scenario) from the current starting balance and savings; `ScenarioComparison` uses it to compare plans.
 
+**Projection window** — the store keeps a start month (`profiles.selected_month`) and a length (`ProjectionInputs.months`, 1–60). The UI shows a start month and an **end month**; `ProjectionsView` derives the end from those and converts edits back to `months` (`addMonthsToKey` / `monthsBetween` in `src/utils/date.ts`). Moving the start keeps the end fixed.
+
+**Amount display** — tables and lists on Projections and Savings show compact amounts (`formatCompactCurrency` / `formatCompactMoney`, e.g. €5.9K) with the exact figure in a `title` tooltip. Inputs and dialogs always show exact amounts.
+
 **Typecheck** — `npm run typecheck` runs `vue-tsc --noEmit -p tsconfig.app.json`. The root `tsconfig.json` only has project references, so plain `vue-tsc --noEmit` checks nothing.
 
 **ProjectionsView form sync pattern:**
@@ -101,14 +105,15 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **Component structure:**
 - `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages
-- `src/components/shared/` — reusable UI: `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
+- `src/components/shared/` — reusable UI: `DatePickerField` (the only calendar control — wraps PrimeVue `DatePicker` with a string model, `mode="month"` → `YYYY-MM`, `mode="date"` → `YYYY-MM-DD`; do not use native `<input type="month|date">`), `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
 - `src/components/dashboard/` — `TrendChart` (cash / net-worth lines + monthly income-vs-expenses columns, with axes and a hover/keyboard readout; geometry helpers in `src/services/chartService.ts`), `CategoryBreakdown`, `GettingStarted` (first-run guide), `MilestonesCard`
 - `src/components/projections/` — `ProjectionTable`, `ItemsDialog`
 - `src/components/scenarios/` — `ScenarioCard`, `ScenarioComparison`
 
 **Page layouts:**
 - `DashboardView` — header + summary strip + 2-column grid (`1.5fr / 1fr`): TrendChart left, insights + MilestonesCard right. Mobile stacks to 1 column.
-- `ProjectionsView` — header + summary strip + 2-column grid (`280px / 1fr`): sticky config panel left (income/expenses inputs + settings), full-width `ProjectionTable` right. Mobile stacks to 1 column.
+- `ProjectionsView` — header + 2-column grid (`280px / 1fr`), no summary strip: sticky config panel left (starting balance, income, expenses always visible; start month, end month and currency in a collapsed **Settings** section that shows its values on one line), `ProjectionTable` right. Mobile stacks to 1 column.
+- `SavingsView` — summary strip + one card holding a compact list, one `SavingsGoalRow` per goal (name, progress, monthly amount, one status chip, a Deposit button and a ⋯ menu for Edit / Use required amount / Delete).
 
 **CSS / styling:**
 - Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`). Chart series use `--chart-1` / `--chart-2`, a pair checked for colour-blind separation and contrast in both themes — do not substitute status colours (`--app-positive` / `--app-negative`) for series.

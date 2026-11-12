@@ -7,6 +7,7 @@ import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
 
 import CurrencyInput from '@/components/shared/CurrencyInput.vue'
+import DatePickerField from '@/components/shared/DatePickerField.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
@@ -242,11 +243,12 @@ const handleClose = (): void => {
       <div class="form-row-inline">
         <div class="form-field" style="flex: 1;">
           <label class="form-label" for="sg-date">Target date</label>
-          <input
-            id="sg-date"
+          <DatePickerField
+            input-id="sg-date"
             v-model="form.targetDate"
-            type="date"
-            class="form-date-input"
+            mode="date"
+            placeholder="No target date"
+            clearable
           />
         </div>
         <div v-if="isEditing" class="form-field" style="flex: 1;">
@@ -352,24 +354,6 @@ const handleClose = (): void => {
   font-size: 0.75rem;
   color: var(--app-text-tertiary);
   margin: 0;
-}
-
-.form-date-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 6px;
-  background: var(--app-surface);
-  color: var(--app-text);
-  font-size: 0.875rem;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s;
-  color-scheme: inherit;
-}
-
-.form-date-input:focus {
-  border-color: var(--app-accent);
 }
 
 .dialog-footer {

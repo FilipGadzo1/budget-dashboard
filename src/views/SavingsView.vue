@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import ConfirmDeleteDialog from '@/components/shared/ConfirmDeleteDialog.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import DepositDialog from '@/components/savings/DepositDialog.vue'
-import SavingsGoalCard from '@/components/savings/SavingsGoalCard.vue'
+import SavingsGoalRow from '@/components/savings/SavingsGoalRow.vue'
 import SavingsGoalDialog from '@/components/savings/SavingsGoalDialog.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRates } from '@/composables/useExchangeRates'
@@ -15,7 +15,7 @@ import { useSavingsStore } from '@/stores/savings'
 
 const savingsStore = useSavingsStore()
 const collabStore = useCollaborationStore()
-const { formatCurrency, formatMoney, toDisplay, currencyCode } = useCurrency()
+const { formatCurrency, formatCompactCurrency, formatMoney, formatCompactMoney, toDisplay, currencyCode, locale } = useCurrency()
 const { getRate } = useExchangeRates()
 
 const readonly = computed(() => collabStore.isReadOnly)
@@ -166,13 +166,13 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
       <div class="savings-summary-items">
         <div class="savings-summary-item">
           <span class="savings-summary-label">Total saved</span>
-          <span class="savings-summary-value tabular-nums">{{ formatCurrency(totalSaved) }}</span>
+          <span class="savings-summary-value tabular-nums" :title="formatCurrency(totalSaved)">{{ formatCompactCurrency(totalSaved) }}</span>
         </div>
         <div class="savings-summary-divider" />
         <div class="savings-summary-item">
           <span class="savings-summary-label">Monthly allocated</span>
-          <span class="savings-summary-value tabular-nums">
-            {{ formatCurrency(monthlyAllocated) }}/mo
+          <span class="savings-summary-value tabular-nums" :title="`${formatCurrency(monthlyAllocated)} a month`">
+            {{ formatCompactCurrency(monthlyAllocated) }}/mo
           </span>
         </div>
         <div class="savings-summary-divider" />
@@ -183,13 +183,15 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
       </div>
     </div>
 
-    <!-- Goal cards -->
-    <div v-if="savingsStore.sortedGoals.length > 0" class="savings-goals-grid">
-      <SavingsGoalCard
+    <!-- Goals: one compact row each -->
+    <div v-if="savingsStore.sortedGoals.length > 0" class="card card-flush savings-list">
+      <SavingsGoalRow
         v-for="goal in savingsStore.sortedGoals"
         :key="goal.id"
         :goal="goal"
         :format-currency="(n: number) => formatMoney(n, goal.currency)"
+        :format-compact="(n: number) => formatCompactMoney(n, goal.currency)"
+        :locale="locale"
         :readonly="readonly"
         :can-delete="canManageGoals"
         @deposit="openDeposit(goal)"
@@ -311,10 +313,8 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
   flex-shrink: 0;
 }
 
-.savings-goals-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.875rem;
+.savings-list {
+  overflow: hidden;
 }
 
 @media (max-width: 1023px) {
