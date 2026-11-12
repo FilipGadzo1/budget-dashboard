@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-import { mockProjectionInputs } from '@/data/mockData'
+import { defaultProjectionInputs } from '@/data/defaults'
 
 import { useProjectionStore } from './projection'
 
@@ -15,7 +15,7 @@ describe('projection store', () => {
   it('initializes with default inputs and empty scenarios', () => {
     const projectionStore = useProjectionStore()
 
-    expect(projectionStore.inputs).toEqual(mockProjectionInputs)
+    expect(projectionStore.inputs).toEqual(defaultProjectionInputs)
     expect(projectionStore.savedScenarios).toEqual([])
     expect(projectionStore.activeScenarioId).toBeNull()
   })

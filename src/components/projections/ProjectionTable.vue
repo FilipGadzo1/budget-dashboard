@@ -10,6 +10,8 @@ const props = defineProps<{
   formatCurrency: (n: number) => string
   adjustments: MonthAdjustment[]
   readonly?: boolean
+  /** Show the net-worth column (only useful when the budget has savings). */
+  showNetWorth?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -73,7 +75,8 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
           <th class="ptable-th ptable-th-num">Income</th>
           <th class="ptable-th ptable-th-num">Expenses</th>
           <th class="ptable-th ptable-th-num">Net</th>
-          <th class="ptable-th ptable-th-num">Balance</th>
+          <th class="ptable-th ptable-th-num">Cash</th>
+          <th v-if="showNetWorth" class="ptable-th ptable-th-num">Net worth</th>
           <th v-if="!readonly" class="ptable-th ptable-th-action" />
         </tr>
       </thead>
@@ -87,7 +90,13 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               'ptable-row-interactive': !readonly,
               'ptable-row-open': expandedMonthKey === row.monthKey,
             }"
+            :tabindex="readonly ? undefined : 0"
+            :role="readonly ? undefined : 'button'"
+            :aria-expanded="readonly ? undefined : expandedMonthKey === row.monthKey"
+            :aria-label="readonly ? undefined : `Adjust ${row.monthLabel}`"
             @click="!readonly && toggleExpand(row.monthKey)"
+            @keydown.enter.self.prevent="!readonly && toggleExpand(row.monthKey)"
+            @keydown.space.self.prevent="!readonly && toggleExpand(row.monthKey)"
           >
             <!-- Left accent bar -->
             <td
@@ -104,7 +113,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               <span class="ptable-month-name">{{ row.monthLabel }}</span>
               <div class="ptable-month-badges">
                 <span v-if="isAdjusted(row)" class="ptable-adj-badge" title="Has one-time adjustment" />
-                <span v-if="hasSavings(row)" class="ptable-savings-badge" title="Savings contribution active">
+                <span v-if="hasSavings(row)" class="ptable-savings-badge" title="Money moves into savings this month">
                   <i class="pi pi-wallet" />
                 </span>
               </div>
@@ -125,11 +134,9 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               <span class="ptable-num">{{ formatCurrency(row.expenses) }}</span>
               <span
                 v-if="row.expenseAdjustment !== 0"
-                class="ptable-delta ptable-delta-neg"
-              >+{{ formatCurrency(row.expenseAdjustment) }}</span>
-              <span v-if="hasSavings(row)" class="ptable-savings-line">
-                <i class="pi pi-wallet" />{{ formatCurrency(row.savingsContribution) }}
-              </span>
+                class="ptable-delta"
+                :class="row.expenseAdjustment > 0 ? 'ptable-delta-neg' : 'ptable-delta-pos'"
+              >{{ row.expenseAdjustment > 0 ? '+' : '' }}{{ formatCurrency(row.expenseAdjustment) }}</span>
             </td>
 
             <!-- Net -->
@@ -138,6 +145,9 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
                 class="ptable-net"
                 :class="row.net >= 0 ? 'ptable-net-pos' : 'ptable-net-neg'"
               >{{ row.net >= 0 ? '+' : '' }}{{ formatCurrency(row.net) }}</span>
+              <span v-if="hasSavings(row)" class="ptable-savings-line" title="Moved from cash into savings">
+                <i class="pi pi-wallet" />{{ formatCurrency(row.savingsContribution) }} to savings
+              </span>
             </td>
 
             <!-- Cumulative balance -->
@@ -148,9 +158,18 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
               >{{ formatCurrency(row.cumulativeBalance) }}</span>
             </td>
 
+            <!-- Net worth (cash + savings) -->
+            <td v-if="showNetWorth" class="ptable-num-cell">
+              <span
+                class="ptable-num"
+                :class="row.netWorth < 0 ? 'ptable-bal-neg' : ''"
+              >{{ formatCurrency(row.netWorth) }}</span>
+            </td>
+
             <!-- Chevron -->
             <td v-if="!readonly" class="ptable-chevron-cell">
               <i
+                aria-hidden="true"
                 class="pi ptable-chevron"
                 :class="expandedMonthKey === row.monthKey ? 'pi-chevron-up' : 'pi-chevron-down'"
               />
@@ -162,7 +181,7 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
             v-if="expandedMonthKey === row.monthKey && !readonly"
             class="ptable-expand-row"
           >
-            <td :colspan="readonly ? 6 : 7" class="ptable-expand-cell">
+            <td :colspan="(readonly ? 6 : 7) + (showNetWorth ? 1 : 0)" class="ptable-expand-cell">
               <div class="ptable-panel">
                 <p class="ptable-panel-title">
                   Adjust <strong>{{ row.monthLabel }}</strong>
@@ -365,9 +384,14 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
   display: inline-flex;
   align-items: center;
   font-size: 0.575rem;
-  color: var(--app-negative);
+  color: var(--app-accent);
   opacity: 0.65;
   flex-shrink: 0;
+}
+
+.ptable-savings-line .pi {
+  font-size: 0.6rem;
+  margin-right: 0.25rem;
 }
 
 .ptable-savings-line {
@@ -375,8 +399,8 @@ const hasSavings = (row: ProjectionRow): boolean => row.savingsContribution > 0
   font-family: 'DM Mono', monospace;
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
-  color: var(--app-negative);
-  opacity: 0.65;
+  color: var(--app-accent);
+  opacity: 0.85;
   margin-top: 2px;
 }
 

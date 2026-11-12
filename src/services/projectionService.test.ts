@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildProjectionRows,
   buildProjectionSummary,
-  buildProjectionTrendPath,
   buildProjectionMilestones,
   buildProjectionShareSummary,
-  calculateBreakEvenGap,
 } from './projectionService'
 
 describe('projectionService', () => {
@@ -16,6 +14,7 @@ describe('projectionService', () => {
         monthlyIncome: 4200,
         monthlyExpenses: 3000,
         months: 3,
+        incomeItems: [],
         expenseItems: [],
         monthlyAdjustments: [],
       },
@@ -35,6 +34,7 @@ describe('projectionService', () => {
         monthlyIncome: 2000,
         monthlyExpenses: 1500,
         months: 2,
+        incomeItems: [],
         expenseItems: [],
         monthlyAdjustments: [],
       },
@@ -46,16 +46,21 @@ describe('projectionService', () => {
       totalIncome: 4000,
       totalExpenses: 3000,
       totalNet: 1000,
+      totalSaved: 0,
       endingBalance: 1000,
+      endingSavings: 0,
+      endingNetWorth: 1000,
     })
   })
 
-  it('builds a trend path for chart rendering', () => {
+  it('starts the cash balance from the starting balance', () => {
     const rows = buildProjectionRows(
       {
         monthlyIncome: 3000,
         monthlyExpenses: 2500,
-        months: 3,
+        months: 2,
+        startingBalance: 10000,
+        incomeItems: [],
         expenseItems: [],
         monthlyAdjustments: [],
       },
@@ -63,30 +68,70 @@ describe('projectionService', () => {
       'en-US',
     )
 
-    expect(buildProjectionTrendPath(rows, 320, 120)).toMatch(/^M /)
-    expect(buildProjectionTrendPath(rows, 320, 120)).toContain('L')
+    expect(rows.map((row) => row.cumulativeBalance)).toEqual([10500, 11000])
   })
 
-  it('calculates the monthly break-even gap for deficit plans', () => {
-    expect(
-      calculateBreakEvenGap({
-        monthlyIncome: 2400,
-        monthlyExpenses: 3000,
-        months: 12,
-        expenseItems: [],
+  it('applies yearly items and start/end dates month by month', () => {
+    const rows = buildProjectionRows(
+      {
+        monthlyIncome: 0,
+        monthlyExpenses: 0,
+        months: 4,
+        incomeItems: [
+          { id: 'salary', name: 'Salary', amount: 3000 },
+          { id: 'raise', name: 'Raise', amount: 500, startMonth: '2026-03' },
+        ],
+        expenseItems: [
+          { id: 'rent', name: 'Rent', amount: 1000, sortOrder: 0 },
+          { id: 'insurance', name: 'Insurance', amount: 1200, sortOrder: 1, everyMonths: 12, startMonth: '2026-02' },
+          { id: 'loan', name: 'Loan', amount: 300, sortOrder: 2, endMonth: '2026-02' },
+        ],
         monthlyAdjustments: [],
-      }),
-    ).toBe(600)
+      },
+      '2026-01',
+      'en-US',
+    )
 
-    expect(
-      calculateBreakEvenGap({
-        monthlyIncome: 3200,
-        monthlyExpenses: 3000,
-        months: 12,
+    expect(rows.map((row) => row.income)).toEqual([3000, 3000, 3500, 3500])
+    expect(rows.map((row) => row.expenses)).toEqual([1300, 2500, 1000, 1000])
+  })
+
+  it('treats savings contributions as a transfer, not an expense', () => {
+    const rows = buildProjectionRows(
+      {
+        monthlyIncome: 3000,
+        monthlyExpenses: 2000,
+        months: 2,
+        startingBalance: 1000,
+        incomeItems: [],
         expenseItems: [],
         monthlyAdjustments: [],
-      }),
-    ).toBe(0)
+        savingsStartingBalance: 5000,
+        savingsAdjustments: [
+          { id: 's1', monthKey: '2026-01', incomeAdjustment: 0, expenseAdjustment: 400 },
+          { id: 's2', monthKey: '2026-02', incomeAdjustment: 0, expenseAdjustment: 400 },
+        ],
+      },
+      '2026-01',
+      'en-US',
+    )
+
+    // Expenses and net are untouched by saving
+    expect(rows.map((row) => row.expenses)).toEqual([2000, 2000])
+    expect(rows.map((row) => row.net)).toEqual([1000, 1000])
+    // Cash grows by net minus what moved to savings; savings grows by the same amount
+    expect(rows.map((row) => row.cumulativeBalance)).toEqual([1600, 2200])
+    expect(rows.map((row) => row.savingsBalance)).toEqual([5400, 5800])
+    // Net worth = cash + savings, and rises by exactly the net each month
+    expect(rows.map((row) => row.netWorth)).toEqual([7000, 8000])
+
+    expect(buildProjectionSummary(rows)).toMatchObject({
+      totalExpenses: 4000,
+      totalSaved: 800,
+      endingBalance: 2200,
+      endingSavings: 5800,
+      endingNetWorth: 8000,
+    })
   })
 
   it('extracts milestone labels from projection rows', () => {
@@ -95,6 +140,7 @@ describe('projectionService', () => {
         monthlyIncome: 1800,
         monthlyExpenses: 2200,
         months: 4,
+        incomeItems: [],
         expenseItems: [],
         monthlyAdjustments: [],
       },

@@ -1,4 +1,5 @@
 import type { SavingsGoal } from '@/models'
+import { isoDateToDate } from '@/utils/date'
 
 const STATUS_ORDER: Record<string, number> = { active: 0, paused: 1, completed: 2 }
 
@@ -25,7 +26,7 @@ export function computeRemaining(goal: SavingsGoal): number {
 export function computeMonthsRemaining(goal: SavingsGoal, now: Date = new Date()): number | null {
   if (!goal.targetDate) return null
 
-  const target = new Date(goal.targetDate)
+  const target = isoDateToDate(goal.targetDate.slice(0, 10))
   // Work in whole months: year/month difference
   const months =
     (target.getFullYear() - now.getFullYear()) * 12 +

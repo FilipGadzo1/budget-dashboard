@@ -1,4 +1,5 @@
 import type { ProjectionInputs, ProjectionRow } from '@/models'
+import { amountIn } from '@/services/itemsService'
 import { formatDisplayMonth, monthKeyToDate } from '@/utils/date'
 
 const addMonths = (date: Date, value: number): Date => {
@@ -16,15 +17,18 @@ export const buildProjectionRows = (
   locale: string,
 ): ProjectionRow[] => {
   const startDate = monthKeyToDate(startMonth)
-  const baseIncome = inputs.incomeItems?.length
-    ? inputs.incomeItems.reduce((s, i) => s + i.amount, 0)
-    : inputs.monthlyIncome
-  const baseExpenses = inputs.expenseItems?.length
-    ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
-    : inputs.monthlyExpenses
+  // Itemised budgets are summed month by month, because items can be yearly or
+  // quarterly and can start or stop part-way through the projection.
+  const incomeFor = (monthKey: string): number =>
+    inputs.incomeItems?.length ? amountIn(inputs.incomeItems, monthKey, startMonth) : inputs.monthlyIncome
+  const expensesFor = (monthKey: string): number =>
+    inputs.expenseItems?.length ? amountIn(inputs.expenseItems, monthKey, startMonth) : inputs.monthlyExpenses
   const adjustments = inputs.monthlyAdjustments ?? []
   const savingsAdjs = inputs.savingsAdjustments ?? []
-  let runningBalance = 0
+  // Cash and savings are tracked separately: a savings contribution moves money
+  // from one to the other and leaves net worth unchanged.
+  let cash = inputs.startingBalance ?? 0
+  let savings = inputs.savingsStartingBalance ?? 0
 
   return Array.from({ length: inputs.months }, (_, index) => {
     const currentDate = addMonths(startDate, index)
@@ -32,10 +36,12 @@ export const buildProjectionRows = (
     const adj = adjustments.find((a) => a.monthKey === monthKey)
     const savAdj = savingsAdjs.find((a) => a.monthKey === monthKey)
     const savingsContribution = savAdj?.expenseAdjustment ?? 0
-    const rowIncome = baseIncome + (adj?.incomeAdjustment ?? 0)
-    const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0) + savingsContribution
+    const rowIncome = incomeFor(monthKey) + (adj?.incomeAdjustment ?? 0)
+    const rowExpenses = expensesFor(monthKey) + (adj?.expenseAdjustment ?? 0)
     const rowNet = rowIncome - rowExpenses
-    runningBalance += rowNet
+    const cashChange = rowNet - savingsContribution
+    cash += cashChange
+    savings += savingsContribution
 
     return {
       monthKey,
@@ -43,10 +49,13 @@ export const buildProjectionRows = (
       income: rowIncome,
       expenses: rowExpenses,
       net: rowNet,
-      cumulativeBalance: runningBalance,
+      savingsContribution,
+      cashChange,
+      cumulativeBalance: cash,
+      savingsBalance: savings,
+      netWorth: cash + savings,
       incomeAdjustment: adj?.incomeAdjustment ?? 0,
       expenseAdjustment: adj?.expenseAdjustment ?? 0,
-      savingsContribution,
       adjustmentNote: adj?.note,
     }
   })
@@ -58,52 +67,18 @@ export const buildProjectionSummary = (
   const totalIncome = rows.reduce((total, row) => total + row.income, 0)
   const totalExpenses = rows.reduce((total, row) => total + row.expenses, 0)
   const totalNet = rows.reduce((total, row) => total + row.net, 0)
-  const endingBalance = rows.at(-1)?.cumulativeBalance ?? 0
+  const totalSaved = rows.reduce((total, row) => total + row.savingsContribution, 0)
+  const last = rows.at(-1)
 
   return {
     totalIncome,
     totalExpenses,
     totalNet,
-    endingBalance,
+    totalSaved,                                  // moved into savings over the horizon
+    endingBalance: last?.cumulativeBalance ?? 0, // cash
+    endingSavings: last?.savingsBalance ?? 0,
+    endingNetWorth: last?.netWorth ?? 0,
   }
-}
-
-export const buildProjectionTrendPath = (
-  rows: ProjectionRow[],
-  width: number,
-  height: number,
-  padding = 10,
-): string => {
-  if (!rows.length) {
-    return ''
-  }
-
-  if (rows.length === 1) {
-    const centerY = height / 2
-    return `M ${padding} ${centerY} L ${width - padding} ${centerY}`
-  }
-
-  const balances = rows.map((row) => row.cumulativeBalance)
-  const minBalance = Math.min(...balances)
-  const maxBalance = Math.max(...balances)
-  const range = maxBalance - minBalance || 1
-  const availableWidth = width - padding * 2
-  const availableHeight = height - padding * 2
-
-  return balances
-    .map((balance, index) => {
-      const x = padding + (availableWidth * index) / (balances.length - 1)
-      const y = height - padding - ((balance - minBalance) / range) * availableHeight
-      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
-    })
-    .join(' ')
-}
-
-export const calculateBreakEvenGap = (inputs: ProjectionInputs): number => {
-  const expenses = inputs.expenseItems?.length
-    ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
-    : inputs.monthlyExpenses
-  return Math.max(expenses - inputs.monthlyIncome, 0)
 }
 
 export const buildProjectionMilestones = (rows: ProjectionRow[]) => {
@@ -133,6 +108,7 @@ interface ProjectionShareSummaryOptions {
   firstNegativeMonthLabel: string | null
   highestBalanceMonthLabel: string | null
   highestBalance: string
+  endingNetWorth?: string
 }
 
 export const buildProjectionShareSummary = ({
@@ -145,6 +121,7 @@ export const buildProjectionShareSummary = ({
   firstNegativeMonthLabel,
   highestBalanceMonthLabel,
   highestBalance,
+  endingNetWorth,
 }: ProjectionShareSummaryOptions): string =>
   [
     'Budget Projection Snapshot',
@@ -152,7 +129,8 @@ export const buildProjectionShareSummary = ({
     `Total income: ${totalIncome}`,
     `Total expenses: ${totalExpenses}`,
     `Total net: ${totalNet}`,
-    `Ending balance: ${endingBalance}`,
+    `Ending cash balance: ${endingBalance}`,
+    ...(endingNetWorth ? [`Ending net worth (cash + savings): ${endingNetWorth}`] : []),
     `First negative month: ${firstNegativeMonthLabel ?? 'Never dips below zero'}`,
     `Peak balance month: ${highestBalanceMonthLabel ?? 'N/A'}`,
     `Peak balance: ${highestBalance}`,

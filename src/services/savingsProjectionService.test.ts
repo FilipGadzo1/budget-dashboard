@@ -1,70 +1,82 @@
-import type { MonthAdjustment, SavingsDeposit } from '@/models'
-import { mergeDepositsIntoAdjustments } from './savingsProjectionService'
-import { describe, it, expect } from 'vitest'
+import type { SavingsGoal } from '@/models'
 
-const makeAdj = (overrides: Partial<MonthAdjustment> = {}): MonthAdjustment => ({
-  id: 'adj-1',
-  monthKey: '2026-04',
-  incomeAdjustment: 0,
-  expenseAdjustment: 0,
-  ...overrides,
-})
+import { buildSavingsContributionAdjustments, savingsStartingBalance } from './savingsProjectionService'
 
-const makeDeposit = (overrides: Partial<SavingsDeposit> = {}): SavingsDeposit => ({
-  id: 'dep-1',
-  goalId: 'goal-1',
-  userId: 'user-1',
-  amount: 500,
+const goal = (overrides: Partial<SavingsGoal> = {}): SavingsGoal => ({
+  id: 'g1',
+  userId: 'u1',
+  name: 'Car',
+  emoji: '🚗',
+  targetAmount: 10000,
+  currentAmount: 0,
+  monthlyContribution: 500,
+  targetDate: null,
+  status: 'active',
   note: null,
-  depositDate: '2026-04-15',
-  createdAt: '2026-04-15T10:00:00.000Z',
+  sortOrder: 0,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 })
 
-describe('mergeDepositsIntoAdjustments', () => {
-  it('returns same array reference when deposits is empty', () => {
-    const existing = [makeAdj()]
-    expect(mergeDepositsIntoAdjustments(existing, [])).toBe(existing)
+const amounts = (goals: SavingsGoal[], months: number): number[] =>
+  buildSavingsContributionAdjustments(goals, '2026-01', months).map((a) => a.expenseAdjustment)
+
+describe('buildSavingsContributionAdjustments', () => {
+  it('contributes every month for an active goal', () => {
+    const result = buildSavingsContributionAdjustments([goal()], '2026-01', 3)
+    expect(result.map((a) => a.monthKey)).toEqual(['2026-01', '2026-02', '2026-03'])
+    expect(result.map((a) => a.expenseAdjustment)).toEqual([500, 500, 500])
   })
 
-  it('adds deposit amount to existing adjustment for matching month', () => {
-    const existing = [makeAdj({ monthKey: '2026-04', expenseAdjustment: 100 })]
-    const result = mergeDepositsIntoAdjustments(existing, [makeDeposit({ amount: 500, depositDate: '2026-04-15' })])
-    expect(result[0].expenseAdjustment).toBe(600)
-    expect(result[0].incomeAdjustment).toBe(0)
+  it('ignores paused, completed and zero-contribution goals', () => {
+    expect(
+      amounts(
+        [
+          goal({ id: 'a', status: 'paused' }),
+          goal({ id: 'b', status: 'completed' }),
+          goal({ id: 'c', monthlyContribution: 0 }),
+        ],
+        3,
+      ),
+    ).toEqual([])
   })
 
-  it('creates a new adjustment for a month with no existing entry', () => {
-    const result = mergeDepositsIntoAdjustments([], [makeDeposit({ amount: 300, depositDate: '2026-06-10' })])
-    expect(result).toHaveLength(1)
-    expect(result[0].monthKey).toBe('2026-06')
-    expect(result[0].expenseAdjustment).toBe(300)
-    expect(result[0].incomeAdjustment).toBe(0)
+  it('stops after the goal target date', () => {
+    const result = buildSavingsContributionAdjustments([goal({ targetDate: '2026-02-15' })], '2026-01', 4)
+    expect(result.map((a) => a.monthKey)).toEqual(['2026-01', '2026-02'])
   })
 
-  it('sums multiple deposits in the same month', () => {
-    const result = mergeDepositsIntoAdjustments(
-      [],
-      [
-        makeDeposit({ id: 'd1', amount: 200, depositDate: '2026-04-01' }),
-        makeDeposit({ id: 'd2', amount: 350, depositDate: '2026-04-20' }),
-      ],
-    )
-    expect(result).toHaveLength(1)
-    expect(result[0].expenseAdjustment).toBe(550)
+  it('stops once the target is reached and trims the final contribution', () => {
+    // 800 already saved of 2000, 500/month → 500, 500, then only 200 is needed
+    expect(amounts([goal({ targetAmount: 2000, currentAmount: 800 })], 6)).toEqual([500, 500, 200])
   })
 
-  it('does not mutate the input array', () => {
-    const existing = [makeAdj({ monthKey: '2026-04', expenseAdjustment: 0 })]
-    const copy = [...existing]
-    mergeDepositsIntoAdjustments(existing, [makeDeposit()])
-    expect(existing).toEqual(copy)
+  it('contributes nothing for a goal that is already fully funded', () => {
+    expect(amounts([goal({ targetAmount: 1000, currentAmount: 1000 })], 3)).toEqual([])
   })
 
-  it('preserves existing incomeAdjustment when adding deposit', () => {
-    const existing = [makeAdj({ monthKey: '2026-04', incomeAdjustment: 200, expenseAdjustment: 50 })]
-    const result = mergeDepositsIntoAdjustments(existing, [makeDeposit({ amount: 100, depositDate: '2026-04-01' })])
-    expect(result[0].incomeAdjustment).toBe(200)
-    expect(result[0].expenseAdjustment).toBe(150)
+  it('sums goals per month and lets each finish on its own schedule', () => {
+    expect(
+      amounts(
+        [
+          goal({ id: 'short', targetAmount: 1000, monthlyContribution: 500 }),
+          goal({ id: 'long', targetAmount: 100000, monthlyContribution: 300 }),
+        ],
+        4,
+      ),
+    ).toEqual([800, 800, 300, 300])
+  })
+})
+
+describe('savingsStartingBalance', () => {
+  it('counts what is saved in every goal, whatever its status', () => {
+    expect(
+      savingsStartingBalance([
+        goal({ id: 'a', currentAmount: 1200 }),
+        goal({ id: 'b', currentAmount: 300, status: 'paused' }),
+        goal({ id: 'c', currentAmount: 5000, status: 'completed' }),
+      ]),
+    ).toBe(6500)
   })
 })

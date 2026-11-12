@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import Toast from 'primevue/toast'
+import { useToast } from 'primevue/usetoast'
 import { onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
+import { useExchangeRates } from '@/composables/useExchangeRates'
+import { lastSaveError } from '@/lib/notify'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
@@ -14,9 +18,20 @@ const projectionStore = useProjectionStore()
 const savingsStore = useSavingsStore()
 const collabStore = useCollaborationStore()
 const router = useRouter()
+const toast = useToast()
+const { fetchRates } = useExchangeRates()
+
+// Failed writes are reported by the service layer; show them instead of failing silently.
+watch(lastSaveError, (err) => {
+  if (!err) return
+  toast.add({ severity: 'error', summary: 'Not saved', detail: err.message, life: 8000 })
+})
 
 const hydrateStores = async (): Promise<void> => {
+  // Rates are needed to combine amounts entered in different currencies.
+  void fetchRates()
   await Promise.all([uiStore.hydrate(), projectionStore.hydrate(), savingsStore.hydrate()])
+  projectionStore.ensureCurrency(uiStore.currencyCode)
   // Load collaboration data after core stores are ready
   void collabStore.hydrate()
 }
@@ -45,6 +60,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <Toast position="top-right" />
   <div v-if="loading" class="app-loading">
     <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: var(--app-accent);" />
   </div>

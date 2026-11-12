@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -9,14 +9,45 @@ import DialogHeader from '@/components/shared/DialogHeader.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
+import ScenarioComparison, { type ComparisonRow } from '@/components/scenarios/ScenarioComparison.vue'
 import { useCurrency } from '@/composables/useCurrency'
-import type { ProjectionScenario } from '@/models'
+import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
+import type { ProjectionInputs, ProjectionScenario } from '@/models'
+import { rebaseInputs } from '@/services/currencyService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 
 const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
-const { formatCurrency } = useCurrency()
+const { formatCurrency, currencyCode, convert } = useCurrency()
+
+const { projectPlan } = useEffectiveProjection()
+
+const totalsFor = (scenario: ProjectionScenario): { income: number; expenses: number } =>
+  projectPlan(scenario.inputs).totals
+
+// The live plan followed by every saved scenario, each projected the same way.
+const comparisonRows = computed((): ComparisonRow[] => {
+  const row = (id: string, name: string, inputs: ProjectionInputs, flags: { isCurrent: boolean; isActive: boolean }): ComparisonRow => {
+    const plan = projectPlan(inputs)
+    return {
+      id,
+      name,
+      ...flags,
+      income: plan.totals.income,
+      expenses: plan.totals.expenses,
+      months: plan.months,
+      endingBalance: plan.summary.endingBalance,
+      firstNegativeMonthLabel: plan.milestones.firstNegativeMonthLabel,
+    }
+  }
+  return [
+    row('__current__', 'Current plan', projectionStore.inputs, { isCurrent: true, isActive: false }),
+    ...projectionStore.savedScenarios.map((s) =>
+      row(s.id, s.name, s.inputs, { isCurrent: false, isActive: s.id === projectionStore.activeScenarioId }),
+    ),
+  ]
+})
 
 const scenarioName = ref('')
 const importState = reactive({
@@ -37,7 +68,15 @@ const saveScenario = (): void => {
   scenarioName.value = ''
 }
 
-const loadScenario = (id: string): void => { projectionStore.loadScenario(id) }
+const loadScenario = (id: string): void => {
+  projectionStore.loadScenario(id)
+  // A scenario saved while another display currency was active: bring its plain
+  // income/expenses fields into the current one. Itemised amounts keep their own.
+  const loaded = projectionStore.inputs
+  if (loaded.currency && loaded.currency !== currencyCode.value) {
+    projectionStore.setInputs(rebaseInputs(loaded, loaded.currency, currencyCode.value, convert))
+  }
+}
 
 const openRename = (scenario: ProjectionScenario): void => {
   renameTarget.value = scenario
@@ -145,24 +184,29 @@ const importFile = async (event: Event): Promise<void> => {
       title="No saved scenarios yet"
       description="Save your current budget inputs as a scenario to start comparing different plans side by side."
       icon="pi pi-bookmark"
-      action-label="Save baseline"
+      :action-label="collabStore.isReadOnly ? '' : 'Save baseline'"
       @action="projectionStore.saveScenario('Baseline plan')"
     />
 
-    <!-- Scenario list -->
-    <div v-else class="grid gap-3 lg:grid-cols-2">
-      <ScenarioCard
-        v-for="scenario in projectionStore.savedScenarios"
-        :key="scenario.id"
-        :scenario="scenario"
-        :is-active="scenario.id === projectionStore.activeScenarioId"
-        :format-currency="formatCurrency"
-        :readonly="collabStore.isReadOnly"
-        @load="loadScenario(scenario.id)"
-        @rename="openRename(scenario)"
-        @delete="openDelete(scenario.id)"
-      />
-    </div>
+    <!-- Comparison + scenario list -->
+    <template v-else>
+      <ScenarioComparison class="mb-6" :rows="comparisonRows" :format-currency="formatCurrency" />
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <ScenarioCard
+          v-for="scenario in projectionStore.savedScenarios"
+          :key="scenario.id"
+          :scenario="scenario"
+          :totals="totalsFor(scenario)"
+          :is-active="scenario.id === projectionStore.activeScenarioId"
+          :format-currency="formatCurrency"
+          :readonly="collabStore.isReadOnly"
+          @load="loadScenario(scenario.id)"
+          @rename="openRename(scenario)"
+          @delete="openDelete(scenario.id)"
+        />
+      </div>
+    </template>
 
     <!-- Rename dialog -->
     <Dialog v-model:visible="showRenameDialog" modal dismissable-mask :draggable="false" :style="{ width: 'min(92vw, 26rem)' }">

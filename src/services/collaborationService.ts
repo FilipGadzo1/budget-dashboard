@@ -1,4 +1,6 @@
+import { DEFAULT_CURRENCY_CODE, DEFAULT_LOCALE } from '@/data/defaults'
 import { supabase } from '@/lib/supabase'
+import { reportSaveError } from '@/lib/notify'
 import type {
   ActivityEntry,
   Collaboration,
@@ -63,8 +65,8 @@ export async function fetchSharedWithMe(userId: string): Promise<SharedBudget[]>
     role: row.role as CollaborationRole,
     status: row.status as SharedBudget['status'],
     inviteToken: row.invite_token,
-    ownerCurrencyCode: (row.owner_currency_code as string | null) ?? 'EUR',
-    ownerLocale: (row.owner_locale as string | null) ?? 'en-IE',
+    ownerCurrencyCode: (row.owner_currency_code as string | null) ?? DEFAULT_CURRENCY_CODE,
+    ownerLocale: (row.owner_locale as string | null) ?? DEFAULT_LOCALE,
   }))
 }
 
@@ -121,7 +123,7 @@ export async function revokeCollaborator(collaborationId: string): Promise<void>
     .delete()
     .eq('id', collaborationId)
 
-  if (error) console.warn('[collab] revokeCollaborator error:', error.message)
+  if (error) reportSaveError('revoke access', error.message)
 }
 
 export async function updateCollaboratorRole(
@@ -133,7 +135,7 @@ export async function updateCollaboratorRole(
     .update({ role })
     .eq('id', collaborationId)
 
-  if (error) console.warn('[collab] updateCollaboratorRole error:', error.message)
+  if (error) reportSaveError('change the role', error.message)
 }
 
 // ─── Accept / Decline invite ──────────────────────────────────────────────────
@@ -152,7 +154,7 @@ export async function acceptInvite(
     })
     .eq('id', collaborationId)
 
-  if (error) console.warn('[collab] acceptInvite error:', error.message)
+  if (error) reportSaveError('accept the invite', error.message)
 }
 
 export async function declineInvite(collaborationId: string): Promise<void> {
@@ -161,7 +163,7 @@ export async function declineInvite(collaborationId: string): Promise<void> {
     .update({ status: 'declined' })
     .eq('id', collaborationId)
 
-  if (error) console.warn('[collab] declineInvite error:', error.message)
+  if (error) reportSaveError('decline the invite', error.message)
 }
 
 // ─── Fetch invite by token (public, for invite link flow) ─────────────────────

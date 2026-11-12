@@ -4,18 +4,29 @@ import { defineStore } from 'pinia'
 import { useAuth } from '@/composables/useAuth'
 import type { SavingsDeposit, SavingsGoal } from '@/models'
 import {
+  changeSavingsGoalCurrency,
   deleteSavingsDeposit,
   deleteSavingsGoal,
-  fetchAllDepositsForUser,
   fetchDepositsForGoal,
+  fetchDepositsForGoals,
   fetchSavingsGoals,
   insertSavingsDeposit,
   insertSavingsGoal,
   updateSavingsGoal,
 } from '@/services/database'
+import { mapSavingsDepositRow, mapSavingsGoalRow } from '@/services/mappers'
 import { sortGoals } from '@/services/savingsService'
 
-let goalsSaveTimer: ReturnType<typeof setTimeout> | undefined
+type GoalDbUpdates = Parameters<typeof updateSavingsGoal>[1]
+
+// One debounce slot per goal. Updates made while a write is pending are merged
+// into it, so editing two goals (or two fields) in quick succession loses nothing.
+const pendingGoalWrites = new Map<string, { timer: ReturnType<typeof setTimeout>; updates: GoalDbUpdates }>()
+
+const clearPendingGoalWrites = (): void => {
+  pendingGoalWrites.forEach(({ timer }) => clearTimeout(timer))
+  pendingGoalWrites.clear()
+}
 
 const getUserId = (): string | null => {
   const { user } = useAuth()
@@ -44,10 +55,8 @@ export const useSavingsStore = defineStore('savings', () => {
     if (!userId) return
 
     isReady.value = false
-    const [fetchedGoals, allDeposits] = await Promise.all([
-      fetchSavingsGoals(userId),
-      fetchAllDepositsForUser(userId),
-    ])
+    const fetchedGoals = await fetchSavingsGoals(userId)
+    const allDeposits = await fetchDepositsForGoals(fetchedGoals.map((g) => g.id))
     goals.value = fetchedGoals
     deposits.value = allDeposits.reduce<Record<string, SavingsDeposit[]>>((acc, d) => {
       if (!acc[d.goalId]) acc[d.goalId] = []
@@ -93,9 +102,10 @@ export const useSavingsStore = defineStore('savings', () => {
     if (!isReady.value) return
 
     // Map camelCase updates to snake_case DB columns
-    const dbUpdates: Parameters<typeof updateSavingsGoal>[1] = {}
+    const dbUpdates: GoalDbUpdates = {}
     if (updates.name !== undefined) dbUpdates.name = updates.name
     if (updates.emoji !== undefined) dbUpdates.emoji = updates.emoji
+    if (updates.currency !== undefined) dbUpdates.currency = updates.currency
     if (updates.targetAmount !== undefined) dbUpdates.target_amount = updates.targetAmount
     if (updates.monthlyContribution !== undefined) dbUpdates.monthly_contribution = updates.monthlyContribution
     if (updates.targetDate !== undefined) dbUpdates.target_date = updates.targetDate
@@ -103,13 +113,66 @@ export const useSavingsStore = defineStore('savings', () => {
     if (updates.note !== undefined) dbUpdates.note = updates.note
     if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder
 
-    clearTimeout(goalsSaveTimer)
-    goalsSaveTimer = setTimeout(() => {
-      void updateSavingsGoal(goalId, dbUpdates)
-    }, 600)
+    const pending = pendingGoalWrites.get(goalId)
+    if (pending) clearTimeout(pending.timer)
+    const merged: GoalDbUpdates = { ...pending?.updates, ...dbUpdates }
+    pendingGoalWrites.set(goalId, {
+      updates: merged,
+      timer: setTimeout(() => {
+        pendingGoalWrites.delete(goalId)
+        void updateSavingsGoal(goalId, merged)
+      }, 600),
+    })
+  }
+
+  // Converts a goal and its deposits to another currency (`rate` = new per 1 old).
+  // Applied locally straight away; if the server rejects it the goal is reloaded
+  // so the screen never shows a conversion that did not happen.
+  const changeGoalCurrency = async (goalId: string, currency: string, rate: number): Promise<void> => {
+    const goal = goals.value.find((g) => g.id === goalId)
+    if (!goal) return
+
+    const to = (amount: number): number => Math.round(amount * rate * 100) / 100
+
+    goals.value = goals.value.map((g) =>
+      g.id === goalId
+        ? {
+            ...g,
+            currency,
+            targetAmount: to(g.targetAmount),
+            monthlyContribution: to(g.monthlyContribution),
+            currentAmount: to(g.currentAmount),
+            updatedAt: new Date().toISOString(),
+          }
+        : g,
+    )
+    deposits.value = {
+      ...deposits.value,
+      [goalId]: (deposits.value[goalId] ?? []).map((d) => ({ ...d, amount: to(d.amount) })),
+    }
+
+    if (!isReady.value) return
+    const ok = await changeSavingsGoalCurrency(goalId, currency, rate)
+    if (!ok) await hydrate(goal.userId)
+  }
+
+  const applyRemoteDepositUpdate = (row: Record<string, unknown>): void => {
+    const deposit = mapSavingsDepositRow(row)
+    const existing = deposits.value[deposit.goalId]
+    if (!existing?.some((d) => d.id === deposit.id)) return
+    deposits.value = {
+      ...deposits.value,
+      [deposit.goalId]: existing.map((d) => (d.id === deposit.id ? deposit : d)),
+    }
   }
 
   const deleteGoal = (goalId: string): void => {
+    const pending = pendingGoalWrites.get(goalId)
+    if (pending) {
+      clearTimeout(pending.timer)
+      pendingGoalWrites.delete(goalId)
+    }
+
     goals.value = goals.value.filter((g) => g.id !== goalId)
     const { [goalId]: _removed, ...rest } = deposits.value
     deposits.value = rest
@@ -189,21 +252,7 @@ export const useSavingsStore = defineStore('savings', () => {
   // ─── Remote apply methods (called by collaboration store realtime handlers) ───
 
   const applyRemoteGoalUpsert = (row: Record<string, unknown>): void => {
-    const goal: SavingsGoal = {
-      id: row.id as string,
-      userId: row.user_id as string,
-      name: row.name as string,
-      emoji: (row.emoji as string) ?? '🎯',
-      targetAmount: Number(row.target_amount ?? 0),
-      currentAmount: Number(row.current_amount ?? 0),
-      monthlyContribution: Number(row.monthly_contribution ?? 0),
-      targetDate: (row.target_date as string | null) ?? null,
-      status: (row.status as SavingsGoal['status']) ?? 'active',
-      note: (row.note as string | null) ?? null,
-      sortOrder: Number(row.sort_order ?? 0),
-      createdAt: row.created_at as string,
-      updatedAt: row.updated_at as string,
-    }
+    const goal = mapSavingsGoalRow(row)
 
     const idx = goals.value.findIndex((g) => g.id === goal.id)
     if (idx === -1) {
@@ -220,15 +269,7 @@ export const useSavingsStore = defineStore('savings', () => {
   }
 
   const applyRemoteDepositInsert = (row: Record<string, unknown>): void => {
-    const deposit: SavingsDeposit = {
-      id: row.id as string,
-      goalId: row.goal_id as string,
-      userId: row.user_id as string,
-      amount: Number(row.amount ?? 0),
-      note: (row.note as string | null) ?? null,
-      depositDate: row.deposit_date as string,
-      createdAt: row.created_at as string,
-    }
+    const deposit = mapSavingsDepositRow(row)
 
     const goalId = deposit.goalId
     const existing = deposits.value[goalId] ?? []
@@ -252,7 +293,7 @@ export const useSavingsStore = defineStore('savings', () => {
   // ─── Reset ────────────────────────────────────────────────────────────────────
 
   const resetStore = (): void => {
-    clearTimeout(goalsSaveTimer)
+    clearPendingGoalWrites()
     goals.value = []
     deposits.value = {}
     isReady.value = false
@@ -268,12 +309,14 @@ export const useSavingsStore = defineStore('savings', () => {
     addGoal,
     updateGoal,
     deleteGoal,
+    changeGoalCurrency,
     loadDeposits,
     addDeposit,
     removeDeposit,
     applyRemoteGoalUpsert,
     applyRemoteGoalDelete,
     applyRemoteDepositInsert,
+    applyRemoteDepositUpdate,
     applyRemoteDepositDelete,
     resetStore,
   }

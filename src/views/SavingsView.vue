@@ -7,6 +7,7 @@ import DepositDialog from '@/components/savings/DepositDialog.vue'
 import SavingsGoalCard from '@/components/savings/SavingsGoalCard.vue'
 import SavingsGoalDialog from '@/components/savings/SavingsGoalDialog.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 import type { SavingsGoal, SavingsGoalStatus } from '@/models'
 import { computeRequiredMonthly } from '@/services/savingsService'
 import { useCollaborationStore } from '@/stores/collaboration'
@@ -14,9 +15,13 @@ import { useSavingsStore } from '@/stores/savings'
 
 const savingsStore = useSavingsStore()
 const collabStore = useCollaborationStore()
-const { formatCurrency } = useCurrency()
+const { formatCurrency, formatMoney, toDisplay, currencyCode } = useCurrency()
+const { getRate } = useExchangeRates()
 
 const readonly = computed(() => collabStore.isReadOnly)
+// Creating and deleting goals is owner-only (enforced by RLS); editors on a shared
+// budget can still edit goals and log deposits.
+const canManageGoals = computed(() => !collabStore.isViewingSharedBudget)
 
 // ─── Goal dialog (create / edit) ──────────────────────────────────────────────
 
@@ -33,20 +38,43 @@ const openEditGoal = (goal: SavingsGoal): void => {
   showGoalDialog.value = true
 }
 
-const handleGoalSave = (data: {
+const handleGoalSave = async (data: {
   name: string
   emoji: string
+  currency: string
   targetAmount: number
   monthlyContribution: number
   targetDate: string | null
   status: SavingsGoalStatus
   note: string | null
-}): void => {
-  if (editingGoal.value) {
-    savingsStore.updateGoal(editingGoal.value.id, data)
-  } else {
-    savingsStore.addGoal({ ...data })
+  convertAmounts: boolean
+}): Promise<void> => {
+  const { convertAmounts, currency, ...fields } = data
+  const goal = editingGoal.value
+
+  if (!goal) {
+    savingsStore.addGoal({ ...fields, currency })
+    return
   }
+
+  const from = goal.currency ?? currencyCode.value
+  if (currency === from) {
+    savingsStore.updateGoal(goal.id, fields)
+    return
+  }
+
+  if (!convertAmounts) {
+    // Relabel: the numbers were in the new currency all along
+    savingsStore.updateGoal(goal.id, { ...fields, currency })
+    return
+  }
+
+  // Convert the saved amount and deposits first, then apply the form's fields
+  // (its target and contribution are already in the new currency).
+  const rate = getRate(from, currency)
+  if (rate === null) return
+  await savingsStore.changeGoalCurrency(goal.id, currency, rate)
+  savingsStore.updateGoal(goal.id, fields)
 }
 
 // ─── Delete dialog ─────────────────────────────────────────────────────────────
@@ -106,8 +134,14 @@ const depositDeposits = computed(() =>
 
 // ─── Summary strip ─────────────────────────────────────────────────────────────
 
+// Goals can be in different currencies — totals are in the display currency.
 const totalSaved = computed(() =>
-  savingsStore.goals.reduce((sum, g) => sum + g.currentAmount, 0),
+  savingsStore.goals.reduce((sum, g) => sum + toDisplay(g.currentAmount, g.currency), 0),
+)
+const monthlyAllocated = computed(() =>
+  savingsStore.goals
+    .filter((g) => g.status === 'active')
+    .reduce((sum, g) => sum + toDisplay(g.monthlyContribution, g.currency), 0),
 )
 const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status === 'active').length)
 </script>
@@ -122,7 +156,7 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
           Track your savings targets and deposits
         </p>
       </div>
-      <button v-if="!readonly" class="btn btn-primary" @click="openNewGoal">
+      <button v-if="canManageGoals" class="btn btn-primary" @click="openNewGoal">
         <i class="pi pi-plus" /> New goal
       </button>
     </header>
@@ -138,7 +172,7 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
         <div class="savings-summary-item">
           <span class="savings-summary-label">Monthly allocated</span>
           <span class="savings-summary-value tabular-nums">
-            {{ formatCurrency(savingsStore.totalMonthlyContributions) }}/mo
+            {{ formatCurrency(monthlyAllocated) }}/mo
           </span>
         </div>
         <div class="savings-summary-divider" />
@@ -155,8 +189,9 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
         v-for="goal in savingsStore.sortedGoals"
         :key="goal.id"
         :goal="goal"
-        :format-currency="formatCurrency"
+        :format-currency="(n: number) => formatMoney(n, goal.currency)"
         :readonly="readonly"
+        :can-delete="canManageGoals"
         @deposit="openDeposit(goal)"
         @edit="openEditGoal(goal)"
         @delete="openDelete(goal.id)"
@@ -175,8 +210,8 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
       v-else
       icon="pi-wallet"
       title="No savings goals yet"
-      :description="readonly ? 'No goals have been created for this budget.' : 'Create your first goal to start tracking your savings.'"
-      :action-label="readonly ? '' : 'New goal'"
+      :description="canManageGoals ? 'Create your first goal to start tracking your savings.' : 'No goals have been created for this budget.'"
+      :action-label="canManageGoals ? 'New goal' : ''"
       @action="openNewGoal"
     />
   </div>
@@ -192,7 +227,7 @@ const activeGoals = computed(() => savingsStore.goals.filter((g) => g.status ===
     v-model:visible="showDepositDialog"
     :goal="depositGoal"
     :deposits="depositDeposits"
-    :format-currency="formatCurrency"
+    :format-currency="(n: number) => formatMoney(n, depositGoal?.currency)"
     :readonly="readonly"
     @save="handleDepositSave"
     @delete-deposit="handleDeleteDeposit"

@@ -1,4 +1,13 @@
 import { supabase } from '@/lib/supabase'
+import {
+  mapExpenseItems,
+  mapIncomeItems,
+  mapMonthAdjustments,
+  mapSavingsDepositRow,
+  mapSavingsGoalRow,
+  mapScenarioRow,
+} from '@/services/mappers'
+import { reportSaveError } from '@/lib/notify'
 import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, SavingsDeposit, SavingsGoal, UiStateSnapshot } from '@/models'
 
 type ScenarioUpdates = Partial<{
@@ -9,6 +18,7 @@ type ScenarioUpdates = Partial<{
   income_items: IncomeItem[]
   expense_items: ExpenseItem[]
   monthly_adjustments: MonthAdjustment[]
+  currency: string | null
   is_active: boolean
 }>
 
@@ -45,7 +55,7 @@ export async function saveProfile(userId: string, prefs: UiStateSnapshot): Promi
     })
     .eq('id', userId)
 
-  if (error) console.warn('[db] saveProfile error:', error.message)
+  if (error) reportSaveError('save your preferences', error.message)
 }
 
 // --- Projection inputs ---
@@ -54,12 +64,12 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
   const [inputsResult, itemsResult] = await Promise.all([
     supabase
       .from('projection_inputs')
-      .select('monthly_income, monthly_expenses, months, monthly_adjustments, income_items')
+      .select('monthly_income, monthly_expenses, months, monthly_adjustments, income_items, currency, starting_balance, starting_balance_currency')
       .eq('user_id', userId)
       .single(),
     supabase
       .from('expense_items')
-      .select('id, name, amount, sort_order')
+      .select('id, name, amount, sort_order, currency, every_months, start_month, end_month, category')
       .eq('user_id', userId)
       .order('sort_order', { ascending: true }),
   ])
@@ -69,74 +79,52 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
     return null
   }
 
-  const expenseItems: ExpenseItem[] = (itemsResult.data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    amount: Number(row.amount),
-    sortOrder: row.sort_order,
-  }))
-
-  const rawAdj: unknown[] = Array.isArray(inputsResult.data.monthly_adjustments)
-    ? inputsResult.data.monthly_adjustments
-    : []
-  const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
-    id: a.id ?? crypto.randomUUID(),
-    monthKey: a.monthKey ?? '',
-    incomeItems: Array.isArray(a.incomeItems)
-      ? a.incomeItems.map((i: any) => ({
-          id: i.id ?? crypto.randomUUID(),
-          name: i.name ?? '',
-          amount: Number(i.amount ?? 0),
-        }))
-      : undefined,
-    incomeAdjustment: Number(a.incomeAdjustment ?? 0),
-    expenseAdjustment: Number(a.expenseAdjustment ?? 0),
-    note: a.note ?? undefined,
-  }))
-
-  const rawIncome: unknown[] = Array.isArray(inputsResult.data.income_items)
-    ? inputsResult.data.income_items
-    : []
-  const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
-    id: i.id ?? crypto.randomUUID(),
-    name: i.name ?? '',
-    amount: Number(i.amount ?? 0),
-  }))
-
   return {
     monthlyIncome: Number(inputsResult.data.monthly_income),
     monthlyExpenses: Number(inputsResult.data.monthly_expenses),
     months: inputsResult.data.months,
-    incomeItems,
-    expenseItems,
-    monthlyAdjustments,
+    currency: inputsResult.data.currency ?? undefined,
+    startingBalance: Number(inputsResult.data.starting_balance ?? 0),
+    startingBalanceCurrency: inputsResult.data.starting_balance_currency ?? undefined,
+    incomeItems: mapIncomeItems(inputsResult.data.income_items),
+    expenseItems: mapExpenseItems(itemsResult.data),
+    monthlyAdjustments: mapMonthAdjustments(inputsResult.data.monthly_adjustments),
   }
 }
 
+// Writes the new list first and only then removes rows that are no longer in it,
+// so a failed write can never leave the user with an empty expense list.
 export async function syncExpenseItems(userId: string, items: ExpenseItem[]): Promise<void> {
-  const { error: delError } = await supabase
-    .from('expense_items')
-    .delete()
-    .eq('user_id', userId)
+  if (items.length) {
+    const { error } = await supabase.from('expense_items').upsert(
+      items.map((item, index) => ({
+        id: item.id,
+        user_id: userId,
+        name: item.name,
+        amount: item.amount,
+        sort_order: index,
+        currency: item.currency ?? null,
+        every_months: item.everyMonths ?? 1,
+        start_month: item.startMonth ?? null,
+        end_month: item.endMonth ?? null,
+        category: item.category ?? null,
+      })),
+      { onConflict: 'id' },
+    )
 
-  if (delError) {
-    console.warn('[db] syncExpenseItems delete error:', delError.message)
-    return
+    if (error) {
+      reportSaveError('save your expense items', error.message)
+      return
+    }
   }
 
-  if (!items.length) return
+  let removal = supabase.from('expense_items').delete().eq('user_id', userId)
+  if (items.length) {
+    removal = removal.not('id', 'in', `(${items.map((item) => item.id).join(',')})`)
+  }
+  const { error: delError } = await removal
 
-  const { error } = await supabase.from('expense_items').insert(
-    items.map((item, index) => ({
-      id: item.id,
-      user_id: userId,
-      name: item.name,
-      amount: item.amount,
-      sort_order: index,
-    })),
-  )
-
-  if (error) console.warn('[db] syncExpenseItems insert error:', error.message)
+  if (delError) reportSaveError('save your expense items', delError.message)
 }
 
 export async function saveProjectionInputs(userId: string, inputs: ProjectionInputs): Promise<void> {
@@ -148,10 +136,13 @@ export async function saveProjectionInputs(userId: string, inputs: ProjectionInp
       months: inputs.months,
       income_items: inputs.incomeItems ?? [],
       monthly_adjustments: inputs.monthlyAdjustments ?? [],
+      currency: inputs.currency ?? null,
+      starting_balance: inputs.startingBalance ?? 0,
+      starting_balance_currency: inputs.startingBalanceCurrency ?? null,
     })
     .eq('user_id', userId)
 
-  if (error) console.warn('[db] saveProjectionInputs error:', error.message)
+  if (error) reportSaveError('save your budget inputs', error.message)
 }
 
 // --- Scenarios ---
@@ -159,7 +150,7 @@ export async function saveProjectionInputs(userId: string, inputs: ProjectionInp
 export async function fetchScenarios(userId: string): Promise<{ scenarios: ProjectionScenario[]; activeScenarioId: string | null }> {
   const { data, error } = await supabase
     .from('scenarios')
-    .select('id, name, monthly_income, monthly_expenses, months, is_active, updated_at, income_items, expense_items, monthly_adjustments')
+    .select('id, name, monthly_income, monthly_expenses, months, is_active, updated_at, income_items, expense_items, monthly_adjustments, currency')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -168,53 +159,11 @@ export async function fetchScenarios(userId: string): Promise<{ scenarios: Proje
     return { scenarios: [], activeScenarioId: null }
   }
 
-  let activeScenarioId: string | null = null
-  const scenarios: ProjectionScenario[] = (data ?? []).map((row) => {
-    if (row.is_active) activeScenarioId = row.id
-    const rawIncome: unknown[] = Array.isArray(row.income_items) ? row.income_items : []
-    const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
-      id: i.id ?? crypto.randomUUID(),
-      name: i.name ?? '',
-      amount: Number(i.amount ?? 0),
-    }))
-    const rawItems: unknown[] = Array.isArray(row.expense_items) ? row.expense_items : []
-    const expenseItems: ExpenseItem[] = rawItems.map((i: any) => ({
-      id: i.id ?? crypto.randomUUID(),
-      name: i.name ?? '',
-      amount: Number(i.amount ?? 0),
-      sortOrder: i.sort_order ?? i.sortOrder ?? 0,
-    }))
-    const rawAdj: unknown[] = Array.isArray(row.monthly_adjustments) ? row.monthly_adjustments : []
-    const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
-      id: a.id ?? crypto.randomUUID(),
-      monthKey: a.monthKey ?? '',
-      incomeItems: Array.isArray(a.incomeItems)
-        ? a.incomeItems.map((i: any) => ({
-            id: i.id ?? crypto.randomUUID(),
-            name: i.name ?? '',
-            amount: Number(i.amount ?? 0),
-          }))
-        : undefined,
-      incomeAdjustment: Number(a.incomeAdjustment ?? 0),
-      expenseAdjustment: Number(a.expenseAdjustment ?? 0),
-      note: a.note ?? undefined,
-    }))
-    return {
-      id: row.id,
-      name: row.name,
-      inputs: {
-        monthlyIncome: Number(row.monthly_income),
-        monthlyExpenses: Number(row.monthly_expenses),
-        months: row.months,
-        incomeItems,
-        expenseItems,
-        monthlyAdjustments,
-      },
-      updatedAt: row.updated_at,
-    }
-  })
-
-  return { scenarios, activeScenarioId }
+  const rows = data ?? []
+  return {
+    scenarios: rows.map(mapScenarioRow),
+    activeScenarioId: rows.find((row) => row.is_active)?.id ?? null,
+  }
 }
 
 export async function insertScenario(userId: string, scenario: ProjectionScenario, isActive: boolean): Promise<void> {
@@ -232,25 +181,26 @@ export async function insertScenario(userId: string, scenario: ProjectionScenari
     income_items: scenario.inputs.incomeItems ?? [],
     expense_items: scenario.inputs.expenseItems ?? [],
     monthly_adjustments: scenario.inputs.monthlyAdjustments ?? [],
+    currency: scenario.inputs.currency ?? null,
     is_active: isActive,
   })
 
-  if (error) console.warn('[db] insertScenario error:', error.message)
+  if (error) reportSaveError('save the scenario', error.message)
 }
 
 export async function updateScenario(scenarioId: string, updates: ScenarioUpdates): Promise<void> {
   const { error } = await supabase.from('scenarios').update(updates).eq('id', scenarioId)
-  if (error) console.warn('[db] updateScenario error:', error.message)
+  if (error) reportSaveError('update the scenario', error.message)
 }
 
 export async function deleteScenario(scenarioId: string): Promise<void> {
   const { error } = await supabase.from('scenarios').delete().eq('id', scenarioId)
-  if (error) console.warn('[db] deleteScenario error:', error.message)
+  if (error) reportSaveError('delete the scenario', error.message)
 }
 
 export async function deleteAllScenarios(userId: string): Promise<void> {
   const { error } = await supabase.from('scenarios').delete().eq('user_id', userId)
-  if (error) console.warn('[db] deleteAllScenarios error:', error.message)
+  if (error) reportSaveError('delete your scenarios', error.message)
 }
 
 export async function setActiveScenario(userId: string, scenarioId: string | null): Promise<void> {
@@ -260,7 +210,7 @@ export async function setActiveScenario(userId: string, scenarioId: string | nul
     .eq('user_id', userId)
 
   if (clearError) {
-    console.warn('[db] setActiveScenario clear error:', clearError.message)
+    reportSaveError('switch the active scenario', clearError.message)
     return
   }
 
@@ -269,7 +219,7 @@ export async function setActiveScenario(userId: string, scenarioId: string | nul
       .from('scenarios')
       .update({ is_active: true })
       .eq('id', scenarioId)
-    if (error) console.warn('[db] setActiveScenario activate error:', error.message)
+    if (error) reportSaveError('switch the active scenario', error.message)
   }
 }
 
@@ -278,7 +228,7 @@ export async function setActiveScenario(userId: string, scenarioId: string | nul
 export async function fetchSavingsGoals(userId: string): Promise<SavingsGoal[]> {
   const { data, error } = await supabase
     .from('savings_goals')
-    .select('id, user_id, name, emoji, target_amount, current_amount, monthly_contribution, target_date, status, note, sort_order, created_at, updated_at')
+    .select('id, user_id, name, emoji, target_amount, current_amount, monthly_contribution, target_date, status, note, sort_order, currency, created_at, updated_at')
     .eq('user_id', userId)
     .order('sort_order', { ascending: true })
 
@@ -287,21 +237,7 @@ export async function fetchSavingsGoals(userId: string): Promise<SavingsGoal[]> 
     return []
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    userId: row.user_id,
-    name: row.name,
-    emoji: row.emoji,
-    targetAmount: Number(row.target_amount),
-    currentAmount: Number(row.current_amount),
-    monthlyContribution: Number(row.monthly_contribution),
-    targetDate: row.target_date ?? null,
-    status: row.status as SavingsGoal['status'],
-    note: row.note ?? null,
-    sortOrder: row.sort_order,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }))
+  return (data ?? []).map(mapSavingsGoalRow)
 }
 
 export async function insertSavingsGoal(userId: string, goal: SavingsGoal): Promise<void> {
@@ -317,9 +253,10 @@ export async function insertSavingsGoal(userId: string, goal: SavingsGoal): Prom
     status: goal.status,
     note: goal.note ?? null,
     sort_order: goal.sortOrder,
+    currency: goal.currency ?? null,
   })
 
-  if (error) console.warn('[db] insertSavingsGoal error:', error.message)
+  if (error) reportSaveError('save the savings goal', error.message)
 }
 
 export async function updateSavingsGoal(
@@ -332,6 +269,7 @@ export async function updateSavingsGoal(
     target_date: string | null
     status: string
     note: string | null
+    currency: string | null
     sort_order: number
     updated_at: string
   }>,
@@ -341,12 +279,31 @@ export async function updateSavingsGoal(
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', goalId)
 
-  if (error) console.warn('[db] updateSavingsGoal error:', error.message)
+  if (error) reportSaveError('update the savings goal', error.message)
+}
+
+/**
+ * Converts a goal — target, monthly contribution, saved amount and all deposits —
+ * into another currency in one transaction. `rate` = new-currency units per 1 old.
+ * Returns false when the change did not go through.
+ */
+export async function changeSavingsGoalCurrency(goalId: string, currency: string, rate: number): Promise<boolean> {
+  const { error } = await supabase.rpc('change_goal_currency', {
+    p_goal_id: goalId,
+    p_currency: currency,
+    p_rate: rate,
+  })
+
+  if (error) {
+    reportSaveError("change the goal's currency", error.message)
+    return false
+  }
+  return true
 }
 
 export async function deleteSavingsGoal(goalId: string): Promise<void> {
   const { error } = await supabase.from('savings_goals').delete().eq('id', goalId)
-  if (error) console.warn('[db] deleteSavingsGoal error:', error.message)
+  if (error) reportSaveError('delete the savings goal', error.message)
 }
 
 // --- Savings Deposits ---
@@ -363,38 +320,27 @@ export async function fetchDepositsForGoal(goalId: string): Promise<SavingsDepos
     return []
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    goalId: row.goal_id,
-    userId: row.user_id,
-    amount: Number(row.amount),
-    note: row.note ?? null,
-    depositDate: row.deposit_date,
-    createdAt: row.created_at,
-  }))
+  return (data ?? []).map(mapSavingsDepositRow)
 }
 
-export async function fetchAllDepositsForUser(userId: string): Promise<SavingsDeposit[]> {
+// Deposits are looked up by goal, not by depositor: `user_id` on a deposit is the
+// actor (owner or editor collaborator), so filtering on it would hide deposits
+// made by anyone other than the budget owner.
+export async function fetchDepositsForGoals(goalIds: string[]): Promise<SavingsDeposit[]> {
+  if (!goalIds.length) return []
+
   const { data, error } = await supabase
     .from('savings_deposits')
     .select('id, goal_id, user_id, amount, note, deposit_date, created_at')
-    .eq('user_id', userId)
+    .in('goal_id', goalIds)
     .order('deposit_date', { ascending: false })
 
   if (error) {
-    console.warn('[db] fetchAllDepositsForUser error:', error.message)
+    console.warn('[db] fetchDepositsForGoals error:', error.message)
     return []
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    goalId: row.goal_id,
-    userId: row.user_id,
-    amount: Number(row.amount),
-    note: row.note ?? null,
-    depositDate: row.deposit_date,
-    createdAt: row.created_at,
-  }))
+  return (data ?? []).map(mapSavingsDepositRow)
 }
 
 export async function insertSavingsDeposit(deposit: SavingsDeposit): Promise<void> {
@@ -407,10 +353,10 @@ export async function insertSavingsDeposit(deposit: SavingsDeposit): Promise<voi
     deposit_date: deposit.depositDate,
   })
 
-  if (error) console.warn('[db] insertSavingsDeposit error:', error.message)
+  if (error) reportSaveError('save the deposit', error.message)
 }
 
 export async function deleteSavingsDeposit(depositId: string): Promise<void> {
   const { error } = await supabase.from('savings_deposits').delete().eq('id', depositId)
-  if (error) console.warn('[db] deleteSavingsDeposit error:', error.message)
+  if (error) reportSaveError('delete the deposit', error.message)
 }

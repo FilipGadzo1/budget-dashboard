@@ -335,39 +335,13 @@ test.describe('2 · Projections', () => {
     }
   })
 
-  test('currency conversion: 10000 EUR → USD', async ({ page }) => {
+  test('currency is display-only on Projections and links to Settings', async ({ page }) => {
     await loginAndGo(page, '/projections')
-    await page.waitForTimeout(2000) // let exchange rates load from CDN
 
-    // Ensure we start with EUR
-    const currencySelect = page.locator('#currency-code')
-    await currencySelect.selectOption('EUR')
-    await page.waitForTimeout(400)
-
-    const incomeInput = page.locator('#monthly-income')
-    await incomeInput.click({ clickCount: 3 })
-    await incomeInput.fill('10000')
-    await page.keyboard.press('Tab')
-    await page.waitForTimeout(400)
-
-    const valueBeforeSwitch = await incomeInput.inputValue()
-    console.log('Income before switch (EUR):', valueBeforeSwitch)
-    await page.screenshot({ path: SS('02-projections-before-currency-switch') })
-
-    // Switch to USD
-    await currencySelect.selectOption('USD')
-    await page.waitForTimeout(1500)
-    await page.screenshot({ path: SS('02-projections-after-currency-switch') })
-
-    const valueAfterSwitch = await incomeInput.inputValue()
-    console.log('Income after switch to USD:', valueAfterSwitch)
-    // OBSERVATION: Should be ~11538 (10000 / 0.8667 ≈ 11538)
-    // If still 10000, the conversion did not apply.
-    if (valueAfterSwitch === valueBeforeSwitch) {
-      console.log('WARNING: Currency conversion did not change the income value')
-    } else {
-      console.log('PASS: Income converted on currency switch')
-    }
+    // Currency is changed in Settings; switching it relabels amounts, it never converts them.
+    await expect(page.locator('#currency-code')).toHaveText(/^[A-Z]{3}$/)
+    await expect(page.locator('select#currency-code')).toHaveCount(0)
+    await expect(page.locator('a', { hasText: 'Change in Settings' })).toBeVisible()
   })
 
   test('exchange rates dialog: opens, shows rates, closes', async ({ page }) => {
@@ -848,7 +822,6 @@ test.describe('5 · Settings', () => {
 
     expect(await page.locator('#s-currency').isVisible()).toBe(true)
     expect(await page.locator('#s-locale').isVisible()).toBe(true)
-    expect(await page.locator('#s-month').isVisible()).toBe(true)
     expect(await page.locator('button', { hasText: 'Save settings' }).isVisible()).toBe(true)
     expect(await page.locator('button', { hasText: 'Reset' }).isVisible()).toBe(true)
   })
@@ -917,7 +890,7 @@ test.describe('5 · Settings', () => {
     await page.waitForTimeout(1000)
     await page.screenshot({ path: SS('05-projections-after-settings-save') })
 
-    const projCurrency = await page.locator('#currency-code').inputValue()
+    const projCurrency = ((await page.locator('#currency-code').textContent()) ?? '').trim()
     console.log(`Projections currency after settings save: ${projCurrency} (expected ${newVal})`)
     expect(projCurrency).toBe(newVal)
 

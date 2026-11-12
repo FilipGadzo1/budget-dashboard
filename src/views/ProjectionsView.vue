@@ -8,41 +8,20 @@ import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
-import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
-import IncomeDialog from '@/components/projections/IncomeDialog.vue'
+import ItemsDialog from '@/components/projections/ItemsDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
 import { useExchangeRates } from '@/composables/useExchangeRates'
-import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs } from '@/models'
-import {
-  buildProjectionRows,
-  buildProjectionShareSummary,
-  buildProjectionSummary,
-  buildProjectionMilestones,
-} from '@/services/projectionService'
-import { buildSavingsContributionAdjustments, mergeDepositsIntoAdjustments } from '@/services/savingsProjectionService'
+import { currencyOptions } from '@/data/defaults'
+import type { BudgetItem, MonthAdjustment } from '@/models'
+import { buildProjectionShareSummary } from '@/services/projectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
-import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 import { buildErrorMap, projectionSchema } from '@/validation/forms'
 
-const currencyOptions = [
-  { value: 'SEK', label: 'Swedish Krona (SEK)' },
-  { value: 'EUR', label: 'Euro (EUR)' },
-  { value: 'USD', label: 'US Dollar (USD)' },
-  { value: 'GBP', label: 'British Pound (GBP)' },
-  { value: 'AED', label: 'UAE Dirham (AED)' },
-]
-
-const localeOptions = [
-  { value: 'sv-SE', label: 'Swedish (Sweden)' },
-  { value: 'en-IE', label: 'English (Ireland)' },
-  { value: 'en-US', label: 'English (United States)' },
-  { value: 'hr-HR', label: 'Croatian (Croatia)' },
-]
-
-const { convert, getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
+const { getRatesFor, fetchRates, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
 const supportedCurrencyCodes = currencyOptions.map((o) => o.value)
 
 const showExchangeDialog = ref(false)
@@ -51,28 +30,24 @@ const currencyLabel = (code: string): string =>
   currencyOptions.find((o) => o.value === code)?.label.split(' (')[0] ?? code
 
 const projectionStore = useProjectionStore()
-const savingsStore = useSavingsStore()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
-const { currencyCode, formatCurrency, formatCompactCurrency, locale, selectedMonth: sharedSelectedMonth } = useCurrency()
+const { currencyCode, formatCurrency, formatCompactCurrency, locale, selectedMonth: sharedSelectedMonth, toDisplay } = useCurrency()
 
-const effectiveInputs = computed((): ProjectionInputs => {
-  const allDeposits = Object.values(savingsStore.deposits).flat()
-  const base = projectionStore.inputs
+const {
+  rows: projectionRows,
+  summary: projectionSummary,
+  milestones: projectionMilestones,
+  displayInputs,
+  baseTotals,
+  hasSavings,
+  unconvertibleCurrencies,
+} = useEffectiveProjection()
 
-  const mergedAdjustments = mergeDepositsIntoAdjustments(base.monthlyAdjustments, allDeposits)
-  const savingsAdjustments = buildSavingsContributionAdjustments(
-    savingsStore.goals,
-    selectedMonth.value,
-    base.months,
-  )
-
-  return {
-    ...base,
-    monthlyAdjustments: mergedAdjustments,
-    savingsAdjustments,
-  }
-})
+// Currency the plain income/expenses fields are stored in. Normally the display
+// currency; it can differ briefly (e.g. right after loading a scenario saved in
+// another currency), in which case the field shows the currency it really holds.
+const baseCurrency = computed(() => projectionStore.inputs.currency ?? currencyCode.value)
 
 const form = reactive({
   monthlyIncome: projectionStore.inputs.monthlyIncome,
@@ -83,12 +58,29 @@ const formErrors = reactive<Record<string, string>>({})
 
 const incomeItems = computed(() => projectionStore.inputs.incomeItems)
 const hasIncomeItems = computed(() => incomeItems.value.length > 0)
-const totalIncome = computed(() => incomeItems.value.reduce((s, i) => s + i.amount, 0))
 
 const displayedIncome = computed({
-  get: () => (hasIncomeItems.value ? totalIncome.value : form.monthlyIncome),
+  get: () => (hasIncomeItems.value ? baseTotals.value.income : form.monthlyIncome),
   set: (val: number) => { form.monthlyIncome = val },
 })
+
+// Cash on hand when the projection begins. Shown and edited in the currency it
+// was entered in; converted to the display currency for the projection itself.
+const startingBalanceCurrency = computed(
+  () => projectionStore.inputs.startingBalanceCurrency ?? baseCurrency.value,
+)
+const startingBalance = computed({
+  get: () => projectionStore.inputs.startingBalance ?? 0,
+  set: (value: number | null) => {
+    projectionStore.setInputs({
+      startingBalance: value ?? 0,
+      startingBalanceCurrency: startingBalanceCurrency.value,
+    })
+  },
+})
+
+// What moves into savings in the first month — the typical monthly transfer.
+const monthlyToSavings = computed(() => projectionRows.value[0]?.savingsContribution ?? 0)
 
 const showIncomeDialog = ref(false)
 const incomeDialogMode = ref<'view' | 'edit'>('view')
@@ -103,22 +95,20 @@ const openIncomeEdit = (): void => {
   showIncomeDialog.value = true
 }
 
-const onIncomeItemsUpdate = (items: IncomeItem[]): void => {
+const onIncomeItemsUpdate = (items: BudgetItem[]): void => {
   projectionStore.setIncomeItems(items)
 }
 
 const expenseItems = computed(() => projectionStore.inputs.expenseItems)
 const hasExpenseItems = computed(() => expenseItems.value.length > 0)
-const totalExpenses = computed(() => expenseItems.value.reduce((s, i) => s + i.amount, 0))
 
 const displayedExpenses = computed({
-  get: () => (hasExpenseItems.value ? totalExpenses.value : form.monthlyExpenses),
+  get: () => (hasExpenseItems.value ? baseTotals.value.expenses : form.monthlyExpenses),
   set: (val: number) => { form.monthlyExpenses = val },
 })
 
 const showExpensesDialog = ref(false)
 const expensesDialogMode = ref<'view' | 'edit'>('view')
-const showExpensesHint = ref(false)
 
 const openExpensesView = (): void => {
   expensesDialogMode.value = 'view'
@@ -130,60 +120,35 @@ const openExpensesEdit = (): void => {
   showExpensesDialog.value = true
 }
 
-const onExpenseItemsUpdate = (items: ExpenseItem[]): void => {
-  projectionStore.setExpenseItems(items)
+const onExpenseItemsUpdate = (items: BudgetItem[]): void => {
+  projectionStore.setExpenseItems(items.map((item, index) => ({ ...item, sortOrder: index })))
 }
 
-const monthlyAdjustments = computed(() => projectionStore.inputs.monthlyAdjustments)
+// The table edits adjustments in the display currency.
+const monthlyAdjustments = computed(() => displayInputs.value.monthlyAdjustments)
 
 const onAdjustmentsUpdate = (adjustments: MonthAdjustment[]): void => {
-  projectionStore.setMonthlyAdjustments(adjustments)
+  const stored = projectionStore.inputs.monthlyAdjustments
+  const shown = monthlyAdjustments.value
+  projectionStore.setMonthlyAdjustments(
+    adjustments.map((next) => {
+      const original = stored.find((a) => a.id === next.id)
+      const before = shown.find((a) => a.id === next.id)
+      const untouched = !!original && !!before
+        && before.monthKey === next.monthKey
+        && before.incomeAdjustment === next.incomeAdjustment
+        && before.expenseAdjustment === next.expenseAdjustment
+        && before.note === next.note
+      // Untouched adjustments keep the currency they were entered in; an edited
+      // one was typed in the display currency.
+      return untouched ? original : { ...next, currency: currencyCode.value }
+    }),
+  )
 }
 
 const shareState = reactive({
   message: '',
   tone: 'neutral' as 'neutral' | 'success' | 'error',
-})
-
-const selectedCurrencyCode = computed({
-  get: () => currencyCode.value,
-  set: (nextCurrencyCode: string) => {
-    if (collabStore.isViewingSharedBudget) return
-    const prev = uiStore.currencyCode
-    const convertedIncome = Math.round(convert(form.monthlyIncome, prev, nextCurrencyCode) * 100) / 100
-    const convertedExpenses = Math.round(convert(form.monthlyExpenses, prev, nextCurrencyCode) * 100) / 100
-    form.monthlyIncome = convertedIncome
-    form.monthlyExpenses = convertedExpenses
-    const convertedIncomeItems = projectionStore.inputs.incomeItems.map((item) => ({
-      ...item,
-      amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
-    }))
-    const convertedItems = projectionStore.inputs.expenseItems.map((item) => ({
-      ...item,
-      amount: Math.round(convert(item.amount, prev, nextCurrencyCode) * 100) / 100,
-    }))
-    projectionStore.setInputs({
-      monthlyIncome: convertedIncome,
-      monthlyExpenses: convertedExpenses,
-      months: form.months,
-      incomeItems: projectionStore.inputs.incomeItems,
-      expenseItems: projectionStore.inputs.expenseItems,
-      monthlyAdjustments: projectionStore.inputs.monthlyAdjustments,
-    })
-    projectionStore.setIncomeItems(convertedIncomeItems)
-    projectionStore.setExpenseItems(convertedItems)
-    uiStore.setPreferences({ currencyCode: nextCurrencyCode, locale: uiStore.locale })
-    collabStore.broadcastProfileUpdate(nextCurrencyCode, uiStore.locale, uiStore.selectedMonth)
-  },
-})
-
-const selectedLocale = computed({
-  get: () => locale.value,
-  set: (val: string) => {
-    if (collabStore.isViewingSharedBudget) return
-    uiStore.setPreferences({ currencyCode: uiStore.currencyCode, locale: val })
-    collabStore.broadcastProfileUpdate(uiStore.currencyCode, val, uiStore.selectedMonth)
-  },
 })
 
 const selectedMonth = computed({
@@ -216,12 +181,6 @@ const syncProjection = async (): Promise<void> => {
   }
 }
 
-const projectionRows = computed(() =>
-  buildProjectionRows(effectiveInputs.value, selectedMonth.value, locale.value),
-)
-const projectionSummary = computed(() => buildProjectionSummary(projectionRows.value))
-const projectionMilestones = computed(() => buildProjectionMilestones(projectionRows.value))
-
 const shareSummary = computed(() =>
   buildProjectionShareSummary({
     startMonthLabel: projectionRows.value[0]?.monthLabel ?? 'N/A',
@@ -233,6 +192,7 @@ const shareSummary = computed(() =>
     firstNegativeMonthLabel: projectionMilestones.value.firstNegativeMonthLabel,
     highestBalanceMonthLabel: projectionMilestones.value.highestBalanceMonthLabel,
     highestBalance: formatCurrency(projectionMilestones.value.highestBalance),
+    endingNetWorth: hasSavings.value ? formatCurrency(projectionSummary.value.endingNetWorth) : undefined,
   }),
 )
 
@@ -292,16 +252,21 @@ const downloadShareSummary = (): void => {
         <span v-if="collabStore.isReadOnly" class="status-pill status-pill-warning proj-readonly-pill">
           <i class="pi pi-eye text-xs" /> View only
         </span>
-        <button class="btn btn-ghost btn-icon" title="Copy summary" @click="copyShareSummary">
+        <button class="btn btn-ghost btn-icon" title="Copy summary" aria-label="Copy summary" @click="copyShareSummary">
           <i class="pi pi-copy" />
         </button>
-        <button class="btn btn-ghost btn-icon" title="Download .txt" @click="downloadShareSummary">
+        <button class="btn btn-ghost btn-icon" title="Download .txt" aria-label="Download .txt" @click="downloadShareSummary">
           <i class="pi pi-download" />
         </button>
       </div>
     </div>
 
     <StatusMessage :message="shareState.message" :tone="shareState.tone" />
+
+    <p v-if="unconvertibleCurrencies.length" class="proj-rates-warning">
+      <i class="pi pi-exclamation-triangle text-xs" />
+      Exchange rates are unavailable, so amounts in {{ unconvertibleCurrencies.join(', ') }} are shown unconverted and totals are wrong.
+    </p>
 
     <!-- ── Summary strip ─────────────────────────────────────────── -->
     <div class="card card-sm proj-summary">
@@ -327,7 +292,7 @@ const downloadShareSummary = (): void => {
         </div>
         <div class="proj-summary-sep" />
         <div class="proj-summary-item">
-          <span class="proj-summary-label">Ending Balance</span>
+          <span class="proj-summary-label">Ending Cash</span>
           <span
             class="proj-summary-value"
             :class="projectionSummary.endingBalance >= 0 ? 'text-positive' : 'text-negative'"
@@ -335,6 +300,19 @@ const downloadShareSummary = (): void => {
             {{ formatCompactCurrency(projectionSummary.endingBalance) }}
           </span>
         </div>
+        <template v-if="hasSavings">
+          <div class="proj-summary-sep" />
+          <div class="proj-summary-item">
+            <span class="proj-summary-label">Net Worth</span>
+            <span
+              class="proj-summary-value"
+              :class="projectionSummary.endingNetWorth >= 0 ? 'text-positive' : 'text-negative'"
+              title="Ending cash plus savings"
+            >
+              {{ formatCompactCurrency(projectionSummary.endingNetWorth) }}
+            </span>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -343,6 +321,20 @@ const downloadShareSummary = (): void => {
 
       <!-- Left: config panel -->
       <div class="card proj-config">
+
+        <!-- Starting point -->
+        <div class="proj-money-field">
+          <label class="form-label" for="starting-balance">Starting balance</label>
+          <CurrencyInput
+            input-id="starting-balance"
+            v-model="startingBalance"
+            :currency="startingBalanceCurrency"
+            :locale="locale"
+            :disabled="collabStore.isReadOnly"
+            allow-negative
+          />
+          <p class="proj-meta-note">Cash you have at the start of the first month.</p>
+        </div>
 
         <!-- Money inputs -->
         <div class="proj-money-field">
@@ -378,14 +370,14 @@ const downloadShareSummary = (): void => {
           <CurrencyInput
             input-id="monthly-income"
             v-model="displayedIncome"
-            :currency="currencyCode"
+            :currency="hasIncomeItems ? currencyCode : baseCurrency"
             :locale="locale"
             :invalid="!!formErrors.monthlyIncome"
             :disabled="hasIncomeItems || collabStore.isReadOnly"
           />
           <div class="proj-exp-meta">
             <p v-if="hasIncomeItems" class="proj-meta-note">
-              Sum of {{ incomeItems.length }} source{{ incomeItems.length !== 1 ? 's' : '' }}
+              Average per month across {{ incomeItems.length }} source{{ incomeItems.length !== 1 ? 's' : '' }}
             </p>
             <p v-else-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
           </div>
@@ -424,19 +416,19 @@ const downloadShareSummary = (): void => {
           <CurrencyInput
             input-id="monthly-expenses"
             v-model="displayedExpenses"
-            :currency="currencyCode"
+            :currency="hasExpenseItems ? currencyCode : baseCurrency"
             :locale="locale"
             :disabled="hasExpenseItems || collabStore.isReadOnly"
             :invalid="!!formErrors.monthlyExpenses"
           />
           <div class="proj-exp-meta">
             <p v-if="hasExpenseItems" class="proj-meta-note">
-              Sum of {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
+              Average per month across {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
             </p>
             <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
-            <p v-if="savingsStore.totalMonthlyContributions > 0" class="proj-meta-savings">
+            <p v-if="monthlyToSavings > 0" class="proj-meta-savings">
               <i class="pi pi-wallet" style="font-size: 0.6rem;" />
-              +{{ formatCurrency(savingsStore.totalMonthlyContributions) }}/mo savings included
+              {{ formatCurrency(monthlyToSavings) }}/mo moves to savings (not an expense)
             </p>
           </div>
         </div>
@@ -473,34 +465,21 @@ const downloadShareSummary = (): void => {
         </div>
 
         <div class="proj-field">
-          <label class="form-label" for="currency-code">Currency</label>
-          <div class="flex items-center gap-1.5">
-            <select
-              id="currency-code"
-              v-model="selectedCurrencyCode"
-              class="form-select flex-1"
-              :disabled="collabStore.isViewingSharedBudget"
-              :title="collabStore.isViewingSharedBudget ? 'Currency is set by the budget owner' : undefined"
+          <span class="form-label">Currency</span>
+          <div class="proj-currency-row">
+            <span id="currency-code" class="proj-currency-code">{{ currencyCode }}</span>
+            <RouterLink
+              v-if="!collabStore.isViewingSharedBudget"
+              to="/settings"
+              class="proj-currency-link"
             >
-              <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-            <button class="btn btn-ghost btn-icon" title="Exchange rates" @click="showExchangeDialog = true">
+              Change in Settings
+            </RouterLink>
+            <span v-else class="proj-meta-note">Set by the budget owner</span>
+            <button class="btn btn-ghost btn-icon proj-currency-rates" title="Exchange rates" aria-label="Exchange rates" @click="showExchangeDialog = true">
               <i class="pi pi-arrows-h" />
             </button>
           </div>
-        </div>
-
-        <div class="proj-field">
-          <label class="form-label" for="locale-code">Locale</label>
-          <select
-            id="locale-code"
-            v-model="selectedLocale"
-            class="form-select"
-            :disabled="collabStore.isViewingSharedBudget"
-            :title="collabStore.isViewingSharedBudget ? 'Locale is set by the budget owner' : undefined"
-          >
-            <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
         </div>
 
       </div>
@@ -512,6 +491,7 @@ const downloadShareSummary = (): void => {
           :format-currency="formatCurrency"
           :adjustments="monthlyAdjustments"
           :readonly="collabStore.isReadOnly"
+          :show-net-worth="hasSavings"
           @update:adjustments="onAdjustmentsUpdate"
         />
       </div>
@@ -519,21 +499,29 @@ const downloadShareSummary = (): void => {
     </div>
 
     <!-- ── Dialogs ────────────────────────────────────────────────── -->
-    <IncomeDialog
+    <ItemsDialog
       v-model:visible="showIncomeDialog"
+      kind="income"
       :initial-mode="incomeDialogMode"
       :model-value="incomeItems"
       :currency="currencyCode"
       :locale="locale"
+      :fallback-currency="baseCurrency"
+      :to-display="toDisplay"
+      :start-month="selectedMonth"
       @update:model-value="onIncomeItemsUpdate"
     />
 
-    <ExpensesDialog
+    <ItemsDialog
       v-model:visible="showExpensesDialog"
+      kind="expense"
       :initial-mode="expensesDialogMode"
       :model-value="expenseItems"
       :currency="currencyCode"
       :locale="locale"
+      :fallback-currency="baseCurrency"
+      :to-display="toDisplay"
+      :start-month="selectedMonth"
       @update:model-value="onExpenseItemsUpdate"
     />
 
@@ -728,6 +716,44 @@ const downloadShareSummary = (): void => {
   font-size: 0.75rem;
   color: var(--app-accent);
   margin: 0;
+}
+
+.proj-rates-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--app-negative);
+  background: var(--app-negative-soft);
+  border: 1px solid var(--app-negative-border);
+}
+
+.proj-currency-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.proj-currency-code {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.875rem;
+  color: var(--app-text);
+}
+
+.proj-currency-link {
+  font-size: 0.75rem;
+  color: var(--app-accent);
+}
+
+.proj-currency-link:hover {
+  text-decoration: underline;
+}
+
+.proj-currency-rates {
+  margin-left: auto;
 }
 
 /* ─── Table section ───────────────────────────────────────────── */

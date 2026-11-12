@@ -11,7 +11,6 @@ const router = useRouter()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
-const sidebarOpen = ref(false)
 const avatarMenuOpen = ref(false)
 
 const pageTitle = computed(() => {
@@ -35,14 +34,6 @@ const mobileTabItems = navItems.filter((item) => item.path !== '/settings')
 const onlineOthers = computed(() =>
   collabStore.onlineUsers.filter((u) => u.userId !== user.value?.id),
 )
-
-const toggleSidebar = (): void => {
-  sidebarOpen.value = !sidebarOpen.value
-}
-
-const closeSidebar = (): void => {
-  sidebarOpen.value = false
-}
 
 const toggleAvatarMenu = (): void => {
   avatarMenuOpen.value = !avatarMenuOpen.value
@@ -75,16 +66,27 @@ const exitContext = async (): Promise<void> => {
       <span class="mobile-topbar-title">{{ pageTitle }}</span>
     </div>
     <div class="mobile-topbar-actions">
-      <button class="mobile-topbar-btn" @click="uiStore.toggleTheme()">
+      <button
+        class="mobile-topbar-btn"
+        :aria-label="uiStore.themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+        @click="uiStore.toggleTheme()"
+      >
         <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
       </button>
       <div class="mobile-avatar-wrap">
-        <button class="mobile-topbar-avatar" :class="{ 'mobile-topbar-avatar-active': avatarMenuOpen }" @click.stop="toggleAvatarMenu">
+        <button
+          class="mobile-topbar-avatar"
+          :class="{ 'mobile-topbar-avatar-active': avatarMenuOpen }"
+          aria-label="Account menu"
+          aria-haspopup="menu"
+          :aria-expanded="avatarMenuOpen"
+          @click.stop="toggleAvatarMenu"
+        >
           <img
             v-if="user?.user_metadata?.avatar_url"
             :src="user.user_metadata.avatar_url"
             class="mobile-topbar-avatar-img"
-            alt="Profile"
+            alt=""
           />
           <span v-else class="mobile-topbar-avatar-initials">
             {{ (user?.user_metadata?.full_name || user?.email || 'U').charAt(0).toUpperCase() }}
@@ -139,15 +141,8 @@ const exitContext = async (): Promise<void> => {
   <!-- Avatar menu backdrop -->
   <div v-if="avatarMenuOpen" class="avatar-menu-backdrop" @click="closeAvatarMenu" />
 
-  <!-- Sidebar overlay (mobile) -->
-  <div
-    class="sidebar-overlay"
-    :class="{ 'sidebar-overlay-visible': sidebarOpen }"
-    @click="closeSidebar"
-  />
-
   <!-- Sidebar -->
-  <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }">
+  <aside class="sidebar">
     <div class="sidebar-brand">
       <div class="sidebar-logo">B</div>
       <div>
@@ -171,20 +166,20 @@ const exitContext = async (): Promise<void> => {
       <button class="sidebar-context-exit" @click="exitContext">Exit</button>
     </div>
 
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav" aria-label="Main">
       <RouterLink
         v-for="item in navItems"
         :key="item.path"
         :to="item.path"
         class="sidebar-link"
         :class="{ 'sidebar-link-active': route.path === item.path }"
-        @click="closeSidebar"
       >
-        <i :class="[item.icon, 'sidebar-link-icon']" />
+        <i :class="[item.icon, 'sidebar-link-icon']" aria-hidden="true" />
         {{ item.label }}
         <span
           v-if="item.path === '/collaboration' && collabStore.pendingInvitesCount > 0"
           class="sidebar-badge"
+          :aria-label="`${collabStore.pendingInvitesCount} pending invites`"
         >
           {{ collabStore.pendingInvitesCount }}
         </span>
@@ -236,7 +231,7 @@ const exitContext = async (): Promise<void> => {
   </aside>
 
   <!-- Mobile bottom tabs -->
-  <nav class="mobile-tabs">
+  <nav class="mobile-tabs" aria-label="Main">
     <div class="mobile-tabs-inner">
       <RouterLink
         v-for="item in mobileTabItems"
@@ -244,10 +239,9 @@ const exitContext = async (): Promise<void> => {
         :to="item.path"
         class="mobile-tab"
         :class="{ 'mobile-tab-active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)) }"
-        @click="closeSidebar"
       >
         <div class="mobile-tab-icon-wrap">
-          <i :class="[item.icon, 'mobile-tab-icon']" />
+          <i :class="[item.icon, 'mobile-tab-icon']" aria-hidden="true" />
           <span
             v-if="item.path === '/collaboration' && collabStore.pendingInvitesCount > 0"
             class="mobile-tab-badge"
@@ -255,6 +249,7 @@ const exitContext = async (): Promise<void> => {
             {{ collabStore.pendingInvitesCount }}
           </span>
         </div>
+        <span class="mobile-tab-label">{{ item.label }}</span>
       </RouterLink>
     </div>
   </nav>
