@@ -1,23 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 
+import AccountMenu from '@/components/app/AccountMenu.vue'
+import AppLogo from '@/components/app/AppLogo.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useCollaborationStore } from '@/stores/collaboration'
-import { useUiStore } from '@/stores/ui'
 
 const route = useRoute()
-const router = useRouter()
-const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
-const { user, signOut } = useAuth()
+const { user } = useAuth()
 const avatarMenuOpen = ref(false)
 
 const pageTitle = computed(() => {
   const match = navItems.find((item) =>
     item.path === '/' ? route.path === '/' : route.path.startsWith(item.path)
   )
-  return match?.label ?? 'Budget'
+  return match?.label ?? otherPages[route.path] ?? 'Budget'
 })
 
 const navItems = [
@@ -26,10 +25,10 @@ const navItems = [
   { path: '/savings', icon: 'pi pi-wallet', label: 'Savings' },
   { path: '/scenarios', icon: 'pi pi-bookmark', label: 'Scenarios' },
   { path: '/collaboration', icon: 'pi pi-users', label: 'Collab' },
-  { path: '/settings', icon: 'pi pi-cog', label: 'Settings' },
 ]
 
-const mobileTabItems = navItems.filter((item) => item.path !== '/settings')
+// Pages reached from the account menu rather than the navigation
+const otherPages: Record<string, string> = { '/settings': 'Settings' }
 
 const onlineOthers = computed(() =>
   collabStore.onlineUsers.filter((u) => u.userId !== user.value?.id),
@@ -43,15 +42,43 @@ const closeAvatarMenu = (): void => {
   avatarMenuOpen.value = false
 }
 
-const goToSettings = (): void => {
-  avatarMenuOpen.value = false
-  router.push('/settings')
+// ── Sidebar account menu (desktop) ───────────────────────────────────────────
+const accountMenuOpen = ref(false)
+const accountArea = ref<HTMLElement | null>(null)
+
+const closeAccountMenu = (): void => { accountMenuOpen.value = false }
+
+const onDocumentPointerDown = (event: PointerEvent): void => {
+  if (accountArea.value && !accountArea.value.contains(event.target as Node)) closeAccountMenu()
+}
+const onDocumentKeydown = (event: KeyboardEvent): void => {
+  if (event.key === 'Escape') {
+    closeAccountMenu()
+    closeAvatarMenu()
+  }
 }
 
-const handleSignOut = async (): Promise<void> => {
-  avatarMenuOpen.value = false
-  await signOut()
-}
+// Listen only while a menu is open
+watch([accountMenuOpen, avatarMenuOpen], ([sidebarOpen, mobileOpen]) => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  document.removeEventListener('keydown', onDocumentKeydown)
+  if (sidebarOpen) document.addEventListener('pointerdown', onDocumentPointerDown)
+  if (sidebarOpen || mobileOpen) document.addEventListener('keydown', onDocumentKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
+
+// Navigating anywhere closes both menus
+watch(() => route.path, () => {
+  closeAccountMenu()
+  closeAvatarMenu()
+})
+
+const userName = computed(() => user.value?.user_metadata?.full_name || user.value?.email || 'Account')
+const userInitial = computed(() => userName.value.charAt(0).toUpperCase())
 
 const exitContext = async (): Promise<void> => {
   await collabStore.exitContext()
@@ -62,17 +89,10 @@ const exitContext = async (): Promise<void> => {
   <!-- Mobile top bar -->
   <header class="mobile-topbar">
     <div class="mobile-topbar-brand">
-      <div class="mobile-topbar-logo">B</div>
+      <AppLogo :size="30" />
       <span class="mobile-topbar-title">{{ pageTitle }}</span>
     </div>
     <div class="mobile-topbar-actions">
-      <button
-        class="mobile-topbar-btn"
-        :aria-label="uiStore.themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-        @click="uiStore.toggleTheme()"
-      >
-        <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" />
-      </button>
       <div class="mobile-avatar-wrap">
         <button
           class="mobile-topbar-avatar"
@@ -89,7 +109,7 @@ const exitContext = async (): Promise<void> => {
             alt=""
           />
           <span v-else class="mobile-topbar-avatar-initials">
-            {{ (user?.user_metadata?.full_name || user?.email || 'U').charAt(0).toUpperCase() }}
+            {{ userInitial }}
           </span>
           <!-- Online indicator dot -->
           <span v-if="onlineOthers.length > 0" class="mobile-avatar-online-dot" />
@@ -116,22 +136,7 @@ const exitContext = async (): Promise<void> => {
               <div class="avatar-menu-divider" />
             </div>
 
-            <!-- User info -->
-            <div v-if="user" class="avatar-menu-user">
-              <p class="avatar-menu-user-name">{{ user.user_metadata?.full_name || user.email }}</p>
-              <p class="avatar-menu-user-email">{{ user.email }}</p>
-            </div>
-            <div class="avatar-menu-divider" />
-
-            <!-- Actions -->
-            <button class="avatar-menu-item" @click="goToSettings">
-              <i class="pi pi-cog" />
-              Settings
-            </button>
-            <button class="avatar-menu-item avatar-menu-item-danger" @click="handleSignOut">
-              <i class="pi pi-sign-out" />
-              Sign out
-            </button>
+            <AccountMenu @close="closeAvatarMenu" />
           </div>
         </Transition>
       </div>
@@ -144,7 +149,7 @@ const exitContext = async (): Promise<void> => {
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <div class="sidebar-logo">B</div>
+      <AppLogo :size="36" />
       <div>
         <div class="sidebar-title">Budget Dashboard</div>
         <div class="sidebar-subtitle">Financial planning</div>
@@ -206,26 +211,34 @@ const exitContext = async (): Promise<void> => {
       </div>
     </div>
 
-    <div class="sidebar-footer">
-      <div v-if="user" class="sidebar-user">
-        <img
-          v-if="user.user_metadata?.avatar_url"
-          :src="user.user_metadata.avatar_url"
-          class="sidebar-user-avatar"
-          :alt="user.user_metadata?.full_name || 'User avatar'"
-        />
-        <div class="sidebar-user-info">
-          <p class="sidebar-user-name">{{ user.user_metadata?.full_name || user.email }}</p>
-          <p class="sidebar-user-email">{{ user.email }}</p>
+    <!-- Account: one row that opens a menu with theme, Settings and Sign out -->
+    <div ref="accountArea" class="sidebar-footer sidebar-account-area">
+      <Transition name="account-pop">
+        <div v-if="accountMenuOpen" id="sidebar-account-menu" class="sidebar-account-pop">
+          <AccountMenu @close="closeAccountMenu" />
         </div>
-      </div>
-      <button class="sidebar-theme-toggle" @click="uiStore.toggleTheme()">
-        <span>{{ uiStore.themeMode === 'dark' ? 'Light mode' : 'Dark mode' }}</span>
-        <i :class="uiStore.themeMode === 'dark' ? 'pi pi-sun' : 'pi pi-moon'" class="sidebar-theme-icon" />
-      </button>
-      <button class="sidebar-theme-toggle" @click="signOut">
-        <span>Sign out</span>
-        <i class="pi pi-sign-out sidebar-theme-icon" />
+      </Transition>
+
+      <button
+        class="sidebar-account"
+        :class="{ 'sidebar-account-open': accountMenuOpen }"
+        aria-haspopup="menu"
+        aria-controls="sidebar-account-menu"
+        :aria-expanded="accountMenuOpen"
+        @click="accountMenuOpen = !accountMenuOpen"
+      >
+        <img
+          v-if="user?.user_metadata?.avatar_url"
+          :src="user.user_metadata.avatar_url"
+          class="sidebar-account-avatar"
+          alt=""
+        />
+        <span v-else class="sidebar-account-avatar sidebar-account-initial" aria-hidden="true">{{ userInitial }}</span>
+        <span class="sidebar-account-text">
+          <span class="sidebar-account-name">{{ userName }}</span>
+          <span v-if="user?.email && user.email !== userName" class="sidebar-account-email">{{ user.email }}</span>
+        </span>
+        <i class="pi pi-angle-up sidebar-account-chevron" aria-hidden="true" />
       </button>
     </div>
   </aside>
@@ -234,7 +247,7 @@ const exitContext = async (): Promise<void> => {
   <nav class="mobile-tabs" aria-label="Main">
     <div class="mobile-tabs-inner">
       <RouterLink
-        v-for="item in mobileTabItems"
+        v-for="item in navItems"
         :key="item.path"
         :to="item.path"
         class="mobile-tab"
@@ -284,6 +297,113 @@ const exitContext = async (): Promise<void> => {
 </template>
 
 <style scoped>
+/* ─── Sidebar account row + menu ──────────────────────────────────────────── */
+.sidebar-account-area {
+  position: relative;
+}
+
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: none;
+  border-radius: 0.625rem;
+  background: none;
+  color: var(--sidebar-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sidebar-account:hover,
+.sidebar-account-open {
+  background: var(--sidebar-hover);
+}
+
+.sidebar-account-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.sidebar-account-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #059669, #34d399);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.sidebar-account-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-account-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sidebar-text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-email {
+  font-size: 0.6875rem;
+  color: var(--sidebar-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-chevron {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--sidebar-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.sidebar-account-open .sidebar-account-chevron {
+  transform: rotate(180deg);
+}
+
+/* Opens upward from the account row */
+.sidebar-account-pop {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(100% - 0.25rem);
+  padding: 0.375rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 0.875rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+
+.account-pop-enter-active {
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.account-pop-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.account-pop-enter-from,
+.account-pop-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
 /* ─── Sidebar context banner ──────────────────────────────────────────────── */
 .sidebar-context-banner {
   margin: 0 0.75rem 0.25rem;
@@ -551,74 +671,10 @@ const exitContext = async (): Promise<void> => {
   padding: 0.375rem;
 }
 
-.avatar-menu-user {
-  padding: 0.5rem 0.625rem 0.375rem;
-}
-
-.avatar-menu-user-name {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--app-text);
-  margin: 0 0 0.125rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.avatar-menu-user-email {
-  font-size: 0.7rem;
-  color: var(--app-text-secondary);
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .avatar-menu-divider {
   height: 1px;
   background: var(--app-border);
   margin: 0.375rem 0;
-}
-
-.avatar-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  width: 100%;
-  padding: 0.5rem 0.625rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: none;
-  font-size: 0.875rem;
-  color: var(--app-text);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s ease;
-  font-family: inherit;
-}
-
-.avatar-menu-item i {
-  font-size: 0.875rem;
-  color: var(--app-text-secondary);
-  width: 1rem;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.avatar-menu-item:hover {
-  background: var(--app-surface-hover);
-}
-
-.avatar-menu-item-danger {
-  color: var(--app-negative);
-}
-
-.avatar-menu-item-danger i {
-  color: var(--app-negative);
-}
-
-.avatar-menu-item-danger:hover {
-  background: rgba(239, 68, 68, 0.08);
 }
 
 /* ─── Online collaborators in dropdown ───────────────────────────────────── */

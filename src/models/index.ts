@@ -1,4 +1,5 @@
-export type ThemeMode = 'light' | 'dark'
+// 'system' follows the device's light/dark preference
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 // Multi-currency: an amount keeps the currency it was entered in. A missing
 // `currency` on an item or adjustment means "the budget's base currency"

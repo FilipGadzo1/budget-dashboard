@@ -31,13 +31,30 @@ export const useUiStore = defineStore('ui', () => {
     if (isReady.value) debouncedSave()
   }, { deep: true })
 
+  // The device's own preference, kept live so 'system' follows it as it changes
+  const systemQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null
+  const systemPrefersDark = ref(systemQuery?.matches ?? false)
+
+  const resolveDark = (mode: ThemeMode): boolean =>
+    mode === 'dark' || (mode === 'system' && systemPrefersDark.value)
+
+  /** True when the dark theme is the one actually showing. */
+  const isDark = computed(() => resolveDark(snapshot.value.themeMode))
+
   const applyTheme = (mode: ThemeMode): void => {
     if (typeof document === 'undefined') return
     const root = document.documentElement
-    const isDark = mode === 'dark'
-    root.classList.toggle('dark', isDark)
-    root.classList.toggle('app-dark', isDark)
+    const dark = resolveDark(mode)
+    root.classList.toggle('dark', dark)
+    root.classList.toggle('app-dark', dark)
   }
+
+  systemQuery?.addEventListener?.('change', (event) => {
+    systemPrefersDark.value = event.matches
+    if (snapshot.value.themeMode === 'system') applyTheme('system')
+  })
 
   const setSelectedMonth = (month: string): void => {
     snapshot.value = { ...snapshot.value, selectedMonth: month }
@@ -72,7 +89,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const toggleTheme = (): void => {
-    setThemeMode(snapshot.value.themeMode === 'dark' ? 'light' : 'dark')
+    setThemeMode(isDark.value ? 'light' : 'dark')
   }
 
   const setPreferences = (preferences: Pick<UiStateSnapshot, 'currencyCode' | 'locale'>): void => {
@@ -91,6 +108,7 @@ export const useUiStore = defineStore('ui', () => {
     isReady,
     selectedMonth,
     themeMode,
+    isDark,
     currencyCode,
     locale,
     initialize,
