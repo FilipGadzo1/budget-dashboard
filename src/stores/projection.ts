@@ -2,7 +2,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
-import { mockProjectionInputs } from '@/data/mockData'
+import { defaultProjectionInputs } from '@/data/defaults'
 import type { ExpenseItem, IncomeItem, MonthAdjustment, ProjectionInputs, ProjectionScenario, ProjectionStateSnapshot } from '@/models'
 import {
   deleteAllScenarios,
@@ -15,6 +15,7 @@ import {
   syncExpenseItems,
   updateScenario,
 } from '@/services/database'
+import { mapScenarioRow } from '@/services/mappers'
 
 interface ProjectionScenarioExportPayload {
   version: 1
@@ -52,7 +53,7 @@ let expenseItemsSaveTimer: ReturnType<typeof setTimeout> | undefined
 let adjustmentsSaveTimer: ReturnType<typeof setTimeout> | undefined
 
 const defaultSnapshot = (): ProjectionStateSnapshot => ({
-  inputs: { ...mockProjectionInputs },
+  inputs: { ...defaultProjectionInputs },
   savedScenarios: [],
   activeScenarioId: null,
 })
@@ -96,7 +97,7 @@ export const useProjectionStore = defineStore('projection', () => {
     ])
 
     snapshot.value = {
-      inputs: inputs ?? { ...mockProjectionInputs },
+      inputs: inputs ?? { ...defaultProjectionInputs },
       savedScenarios: scenarioData.scenarios,
       activeScenarioId: scenarioData.activeScenarioId,
     }
@@ -114,7 +115,7 @@ export const useProjectionStore = defineStore('projection', () => {
 
   const buildScenarioName = (): string => `Scenario ${snapshot.value.savedScenarios.length + 1}`
 
-  const setInputs = (nextInputs: ProjectionInputs): void => {
+  const setInputs = (nextInputs: Partial<ProjectionInputs>): void => {
     snapshot.value = { ...snapshot.value, inputs: { ...snapshot.value.inputs, ...nextInputs } }
   }
 
@@ -157,7 +158,7 @@ export const useProjectionStore = defineStore('projection', () => {
     clearTimeout(expenseItemsSaveTimer)
     clearTimeout(adjustmentsSaveTimer)
     const userId = getEffectiveUserId()
-    const zeroInputs: ProjectionInputs = { ...mockProjectionInputs, expenseItems: [], monthlyAdjustments: [] }
+    const zeroInputs: ProjectionInputs = { ...defaultProjectionInputs, expenseItems: [], monthlyAdjustments: [] }
     snapshot.value = {
       ...snapshot.value,
       inputs: zeroInputs,
@@ -197,14 +198,29 @@ export const useProjectionStore = defineStore('projection', () => {
     const scenario = snapshot.value.savedScenarios.find((e) => e.id === scenarioId)
     if (!scenario) return
 
+    // Expense items live in their own table, which the inputs save-watcher does not
+    // write — persist them explicitly or the previous list returns after a reload.
+    // Fresh ids: the scenario may be an import whose item ids belong to other rows.
+    const expenseItems = (scenario.inputs.expenseItems ?? []).map((item) => ({
+      ...item,
+      id: crypto.randomUUID(),
+    }))
+
+    // The starting balance is a fact about today, not part of a plan: keep it.
+    const { startingBalance, startingBalanceCurrency } = snapshot.value.inputs
+
     snapshot.value = {
       ...snapshot.value,
-      inputs: { ...scenario.inputs },
+      inputs: { ...scenario.inputs, expenseItems, startingBalance, startingBalanceCurrency },
       activeScenarioId: scenario.id,
     }
 
+    clearTimeout(expenseItemsSaveTimer)
     const userId = getEffectiveUserId()
-    if (userId) void setActiveScenario(userId, scenario.id)
+    if (userId) {
+      void setActiveScenario(userId, scenario.id)
+      void syncExpenseItems(userId, expenseItems)
+    }
   }
 
   const renameScenario = (scenarioId: string, nextName: string): boolean => {
@@ -254,6 +270,7 @@ export const useProjectionStore = defineStore('projection', () => {
         income_items: snapshot.value.inputs.incomeItems ?? [],
         expense_items: snapshot.value.inputs.expenseItems ?? [],
         monthly_adjustments: snapshot.value.inputs.monthlyAdjustments ?? [],
+        currency: snapshot.value.inputs.currency ?? null,
       })
     }
     return overwritten
@@ -336,69 +353,42 @@ export const useProjectionStore = defineStore('projection', () => {
     void nextTick(() => { isReceivingRemoteUpdate.value = false })
   }
 
-  const applyRemoteInputs = (income: number, expenses: number, months: number): void => {
-    withRemoteFlag(() => {
-      snapshot.value = {
-        ...snapshot.value,
-        inputs: { ...snapshot.value.inputs, monthlyIncome: income, monthlyExpenses: expenses, months },
-      }
-    })
-  }
-
-  // Applies a full inputs update (including expense items and monthly adjustments) in a
+  // Applies a full inputs update (income/expense items and monthly adjustments) in a
   // single remote flag cycle. Used by the broadcast listener to avoid separate
   // withRemoteFlag calls that could briefly clear the flag between two reactive updates.
-  const applyRemoteFullInputs = (income: number, expenses: number, months: number, expenseItems: ExpenseItem[], monthlyAdjustments: MonthAdjustment[]): void => {
+  // Fields left out of `remote` keep their current local value.
+  const applyRemoteFullInputs = (remote: Partial<ProjectionInputs>): void => {
     withRemoteFlag(() => {
+      const current = snapshot.value.inputs
       snapshot.value = {
         ...snapshot.value,
         inputs: {
-          monthlyIncome: income,
-          monthlyExpenses: expenses,
-          months,
-          incomeItems: snapshot.value.inputs.incomeItems,
-          expenseItems,
-          monthlyAdjustments,
+          monthlyIncome: remote.monthlyIncome ?? current.monthlyIncome,
+          monthlyExpenses: remote.monthlyExpenses ?? current.monthlyExpenses,
+          months: remote.months ?? current.months,
+          currency: remote.currency ?? current.currency,
+          startingBalance: remote.startingBalance ?? current.startingBalance,
+          startingBalanceCurrency: remote.startingBalanceCurrency ?? current.startingBalanceCurrency,
+          incomeItems: remote.incomeItems ?? current.incomeItems,
+          expenseItems: remote.expenseItems ?? current.expenseItems,
+          monthlyAdjustments: remote.monthlyAdjustments ?? current.monthlyAdjustments,
         },
       }
     })
   }
 
+  // Gives a budget that has no base currency yet (created before multi-currency, or
+  // brand new) the currency its numbers are being shown in. In-memory only: it is
+  // persisted with the next real edit, so a view-only collaborator never writes.
+  const ensureCurrency = (currency: string): void => {
+    if (snapshot.value.inputs.currency) return
+    withRemoteFlag(() => {
+      snapshot.value = { ...snapshot.value, inputs: { ...snapshot.value.inputs, currency } }
+    })
+  }
+
   const applyRemoteScenarioUpsert = (row: Record<string, unknown>): void => {
-    const rawIncome = Array.isArray(row.income_items) ? (row.income_items as unknown[]) : []
-    const incomeItems: IncomeItem[] = rawIncome.map((i: any) => ({
-      id: i.id ?? crypto.randomUUID(),
-      name: i.name ?? '',
-      amount: Number(i.amount ?? 0),
-    }))
-    const rawItems = Array.isArray(row.expense_items) ? (row.expense_items as unknown[]) : []
-    const expenseItems: ExpenseItem[] = rawItems.map((i: any) => ({
-      id: i.id ?? crypto.randomUUID(),
-      name: i.name ?? '',
-      amount: Number(i.amount ?? 0),
-      sortOrder: i.sort_order ?? i.sortOrder ?? 0,
-    }))
-    const rawAdj = Array.isArray(row.monthly_adjustments) ? (row.monthly_adjustments as unknown[]) : []
-    const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
-      id: a.id ?? crypto.randomUUID(),
-      monthKey: a.monthKey ?? '',
-      incomeAdjustment: Number(a.incomeAdjustment ?? 0),
-      expenseAdjustment: Number(a.expenseAdjustment ?? 0),
-      note: a.note ?? undefined,
-    }))
-    const scenario: ProjectionScenario = {
-      id: row.id as string,
-      name: row.name as string,
-      inputs: {
-        monthlyIncome: Number(row.monthly_income),
-        monthlyExpenses: Number(row.monthly_expenses),
-        months: row.months as number,
-        incomeItems,
-        expenseItems,
-        monthlyAdjustments,
-      },
-      updatedAt: row.updated_at as string,
-    }
+    const scenario = mapScenarioRow(row)
 
     withRemoteFlag(() => {
       const exists = snapshot.value.savedScenarios.some((s) => s.id === scenario.id)
@@ -455,8 +445,8 @@ export const useProjectionStore = defineStore('projection', () => {
     deleteScenario,
     exportScenarios,
     importScenarios,
-    applyRemoteInputs,
     applyRemoteFullInputs,
+    ensureCurrency,
     applyRemoteScenarioUpsert,
     applyRemoteScenarioDelete,
     applyRemoteExpenseItems,

@@ -1,53 +1,58 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { useExchangeRates } from '@/composables/useExchangeRates'
+import { currencyOptions, localeOptions } from '@/data/defaults'
+import { rebaseInputs } from '@/services/currencyService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useUiStore } from '@/stores/ui'
 
-const currencyOptions = [
-  { value: 'EUR', label: 'Euro (EUR)' },
-  { value: 'USD', label: 'US Dollar (USD)' },
-  { value: 'GBP', label: 'British Pound (GBP)' },
-  { value: 'SEK', label: 'Swedish Krona (SEK)' },
-  { value: 'AED', label: 'UAE Dirham (AED)' },
-]
-
-const localeOptions = [
-  { value: 'en-US', label: 'English (United States)' },
-  { value: 'en-IE', label: 'English (Ireland)' },
-  { value: 'sv-SE', label: 'Swedish (Sweden)' },
-  { value: 'hr-HR', label: 'Croatian (Croatia)' },
-]
-
 const uiStore = useUiStore()
 const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
+const { fetchRates, canConvert, convert } = useExchangeRates()
 
 // ── Local draft state ─────────────────────────────────────────────────────────
 const draftCurrency = ref(uiStore.currencyCode)
 const draftLocale = ref(uiStore.locale)
-const draftMonth = ref(uiStore.selectedMonth)
 
 // Keep draft in sync if another part of the app changes the store
 watch(() => uiStore.currencyCode, (v) => { draftCurrency.value = v })
 watch(() => uiStore.locale, (v) => { draftLocale.value = v })
-watch(() => uiStore.selectedMonth, (v) => { draftMonth.value = v })
 
 const isDirty = computed(
   () =>
     draftCurrency.value !== uiStore.currencyCode
-    || draftLocale.value !== uiStore.locale
-    || draftMonth.value !== uiStore.selectedMonth,
+    || draftLocale.value !== uiStore.locale,
 )
 
 const saveStatus = ref<'idle' | 'saved'>('idle')
 let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
 
-const saveSettings = (): void => {
+const saveError = ref('')
+
+const saveSettings = async (): Promise<void> => {
+  saveError.value = ''
+  const from = uiStore.currencyCode
+  const to = draftCurrency.value
+
+  if (from !== to) {
+    // Switching display currency converts everything on screen, so rates are required.
+    await fetchRates()
+    if (!canConvert(from, to)) {
+      saveError.value = 'Exchange rates are unavailable right now, so the currency was not changed. Try again shortly.'
+      return
+    }
+    // Own budget only: when a shared budget is open the projection store holds
+    // the owner's data, which this user's display preference must not rewrite.
+    if (!collabStore.isViewingSharedBudget) {
+      projectionStore.setInputs(rebaseInputs(projectionStore.inputs, from, to, convert))
+    }
+  }
+
   uiStore.setPreferences({ currencyCode: draftCurrency.value, locale: draftLocale.value })
-  uiStore.setSelectedMonth(draftMonth.value)
-  collabStore.broadcastProfileUpdate(draftCurrency.value, draftLocale.value, draftMonth.value)
+  collabStore.broadcastProfileUpdate(draftCurrency.value, draftLocale.value, uiStore.selectedMonth)
   clearTimeout(saveStatusTimer)
   saveStatus.value = 'saved'
   saveStatusTimer = setTimeout(() => { saveStatus.value = 'idle' }, 2500)
@@ -68,7 +73,6 @@ const resetAll = async (): Promise<void> => {
   // Sync drafts to the new defaults
   draftCurrency.value = uiStore.currencyCode
   draftLocale.value = uiStore.locale
-  draftMonth.value = uiStore.selectedMonth
 }
 </script>
 
@@ -82,7 +86,7 @@ const resetAll = async (): Promise<void> => {
     <!-- Display preferences -->
     <div class="card mb-6">
       <p class="text-heading mb-4">Display preferences</p>
-      <div class="settings-selects-grid grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div class="settings-selects-grid grid grid-cols-2 gap-3">
         <div>
           <label class="form-label" for="s-currency">Currency</label>
           <select id="s-currency" v-model="draftCurrency" class="form-select">
@@ -95,11 +99,13 @@ const resetAll = async (): Promise<void> => {
             <option v-for="opt in localeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
-        <div>
-          <label class="form-label" for="s-month">Start month</label>
-          <input id="s-month" v-model="draftMonth" class="form-select" type="month" />
-        </div>
       </div>
+      <p class="mt-2 text-xs text-secondary">
+        Everything is shown converted to this currency at today's exchange rates. Each income
+        source, expense and savings goal keeps the currency you entered it in, so you can mix
+        currencies and switch back without losing precision.
+      </p>
+      <p v-if="saveError" class="form-error">{{ saveError }}</p>
 
       <div class="mt-5">
         <label class="form-label">Theme</label>

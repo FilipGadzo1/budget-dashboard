@@ -6,6 +6,7 @@ import InputText from 'primevue/inputtext'
 
 import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
+import { currencyOptions } from '@/data/defaults'
 import type { ExpenseItem } from '@/models'
 
 const props = withDefaults(
@@ -13,8 +14,13 @@ const props = withDefaults(
     visible: boolean
     modelValue: ExpenseItem[]
     initialMode?: 'view' | 'edit'
+    /** Display currency: totals are shown in it and new items default to it. */
     currency: string
     locale: string
+    /** Currency of items that have none of their own (the budget's base currency). */
+    fallbackCurrency: string
+    /** Converts an amount entered in `from` to the display currency. */
+    toDisplay: (amount: number, from?: string) => number
   }>(),
   { initialMode: 'view' },
 )
@@ -32,21 +38,29 @@ watch(
   (isVisible) => {
     if (isVisible) {
       mode.value = props.initialMode
-      draft.value = props.modelValue.map((i) => ({ ...i }))
+      draft.value = withCurrency(props.modelValue)
     }
   },
 )
 
-const fmt = (amount: number): string =>
-  new Intl.NumberFormat(props.locale, { style: 'currency', currency: props.currency }).format(amount)
+const currencyOf = (item: { currency?: string }): string => item.currency ?? props.fallbackCurrency
 
-const total = computed(() => props.modelValue.reduce((s, i) => s + i.amount, 0))
-const draftTotal = computed(() => draft.value.reduce((s, i) => s + i.amount, 0))
+const withCurrency = <T extends { currency?: string }>(items: T[]): T[] =>
+  items.map((i) => ({ ...i, currency: currencyOf(i) }))
+
+const fmt = (amount: number, currency: string = props.currency): string =>
+  new Intl.NumberFormat(props.locale, { style: 'currency', currency }).format(amount)
+
+const sumInDisplay = (items: Array<{ amount: number; currency?: string }>): number =>
+  items.reduce((s, i) => s + props.toDisplay(i.amount, currencyOf(i)), 0)
+
+const total = computed(() => sumInDisplay(props.modelValue))
+const draftTotal = computed(() => sumInDisplay(draft.value))
 
 const close = (): void => emit('update:visible', false)
 
 const enterEdit = (): void => {
-  draft.value = props.modelValue.map((i) => ({ ...i }))
+  draft.value = withCurrency(props.modelValue)
   mode.value = 'edit'
 }
 
@@ -71,7 +85,7 @@ const save = (): void => {
 }
 
 const addItem = (): void => {
-  draft.value.push({ id: crypto.randomUUID(), name: '', amount: 0, sortOrder: draft.value.length })
+  draft.value.push({ id: crypto.randomUUID(), name: '', amount: 0, sortOrder: draft.value.length, currency: props.currency })
 }
 
 const removeItem = (index: number): void => {
@@ -85,7 +99,7 @@ const removeItem = (index: number): void => {
     modal
     dismissable-mask
     :draggable="false"
-    :style="{ width: 'min(92vw, 32rem)', height: 'min(85vh, 34rem)' }"
+    :style="{ width: 'min(94vw, 36rem)', height: 'min(85vh, 34rem)' }"
     :pt="{
       root: { style: 'display: flex; flex-direction: column;' },
       content: { style: 'flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0;' },
@@ -108,11 +122,16 @@ const removeItem = (index: number): void => {
           class="flex items-center justify-between rounded-lg border border-app px-4 py-3"
         >
           <span class="text-sm text-secondary">{{ item.name }}</span>
-          <span class="text-sm font-semibold tabular-nums text-primary">{{ fmt(item.amount) }}</span>
+          <span class="text-right">
+            <span class="block text-sm font-semibold tabular-nums text-primary">{{ fmt(item.amount, currencyOf(item)) }}</span>
+            <span v-if="currencyOf(item) !== currency" class="block text-xs tabular-nums text-secondary">
+              ≈ {{ fmt(toDisplay(item.amount, currencyOf(item))) }}
+            </span>
+          </span>
         </div>
       </div>
       <div class="exp-total-row">
-        <span class="text-sm font-medium text-secondary">Total</span>
+        <span class="text-sm font-medium text-secondary">Total in {{ currency }}</span>
         <span class="text-sm font-bold tabular-nums text-primary">{{ fmt(total) }}</span>
       </div>
     </div>
@@ -137,13 +156,20 @@ const removeItem = (index: number): void => {
             class="min-w-0 flex-1"
             fluid
           />
-          <div class="w-36 shrink-0">
+          <div class="item-amount shrink-0">
             <CurrencyInput
               v-model="draft[index].amount"
-              :currency="currency"
+              :currency="currencyOf(item)"
               :locale="locale"
             />
           </div>
+          <select
+            v-model="draft[index].currency"
+            class="form-select item-currency shrink-0"
+            aria-label="Currency"
+          >
+            <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.value }}</option>
+          </select>
           <button class="btn btn-ghost btn-icon shrink-0 text-secondary hover:text-negative" @click="removeItem(index)">
             <i class="pi pi-times text-xs" />
           </button>
@@ -151,7 +177,7 @@ const removeItem = (index: number): void => {
       </div>
 
       <div v-if="draft.length" class="exp-total-row">
-        <span class="text-sm font-medium text-secondary">Total</span>
+        <span class="text-sm font-medium text-secondary">Total in {{ currency }}</span>
         <span class="text-sm font-bold tabular-nums text-primary">{{ fmt(draftTotal) }}</span>
       </div>
     </div>
@@ -176,6 +202,22 @@ const removeItem = (index: number): void => {
 </template>
 
 <style scoped>
+.item-amount {
+  width: 8.5rem;
+}
+
+.item-currency {
+  width: 4.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .item-amount {
+    width: 6.75rem;
+  }
+}
+
 .exp-body {
   display: flex;
   flex-direction: column;

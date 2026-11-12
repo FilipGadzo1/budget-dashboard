@@ -1,16 +1,22 @@
 export type ThemeMode = 'light' | 'dark'
 
+// Multi-currency: an amount keeps the currency it was entered in. A missing
+// `currency` on an item or adjustment means "the budget's base currency"
+// (`ProjectionInputs.currency`). See src/services/currencyService.ts.
+
 export interface ExpenseItem {
   id: string
   name: string
   amount: number
   sortOrder: number
+  currency?: string
 }
 
 export interface IncomeItem {
   id: string
   name: string
   amount: number
+  currency?: string
 }
 
 export interface MonthAdjustment {
@@ -19,16 +25,21 @@ export interface MonthAdjustment {
   incomeAdjustment: number
   expenseAdjustment: number
   note?: string
+  currency?: string
 }
 
 export interface ProjectionInputs {
   monthlyIncome: number
   monthlyExpenses: number
   months: number
+  currency?: string                        // base currency: plain fields + untagged items
   incomeItems: IncomeItem[]
   expenseItems: ExpenseItem[]
   monthlyAdjustments: MonthAdjustment[]
-  savingsAdjustments?: MonthAdjustment[]   // system-generated, separate from user adjustments
+  startingBalance?: number                 // cash on hand when the projection begins
+  startingBalanceCurrency?: string         // currency it was entered in (default: base)
+  savingsAdjustments?: MonthAdjustment[]   // system-generated: planned transfers into savings
+  savingsStartingBalance?: number          // system-generated: already saved across all goals
 }
 
 export interface ProjectionScenario {
@@ -48,12 +59,15 @@ export interface ProjectionRow {
   monthKey: string
   monthLabel: string
   income: number
-  expenses: number
-  net: number
-  cumulativeBalance: number
+  expenses: number               // spending only — savings transfers are not expenses
+  net: number                    // income - expenses
+  savingsContribution: number    // moved from cash into savings this month
+  cashChange: number             // net - savingsContribution
+  cumulativeBalance: number      // cash balance at the end of the month
+  savingsBalance: number         // savings balance at the end of the month
+  netWorth: number               // cumulativeBalance + savingsBalance
   incomeAdjustment: number       // user one-time adjustment only
   expenseAdjustment: number      // user one-time adjustment only
-  savingsContribution: number    // savings goals contribution this month
   adjustmentNote?: string
 }
 
@@ -73,6 +87,7 @@ export interface SavingsGoal {
   userId: string
   name: string
   emoji: string
+  currency?: string            // currency of this goal's amounts and deposits
   targetAmount: number
   currentAmount: number        // maintained by DB trigger on deposits
   monthlyContribution: number  // included in projections as expense

@@ -2,14 +2,14 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import { useAuth } from '@/composables/useAuth'
-import { mockUiState } from '@/data/mockData'
+import { defaultUiState } from '@/data/defaults'
 import type { ThemeMode, UiStateSnapshot } from '@/models'
 import { fetchProfile, saveProfile } from '@/services/database'
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 
 export const useUiStore = defineStore('ui', () => {
-  const snapshot = ref<UiStateSnapshot>({ ...mockUiState })
+  const snapshot = ref<UiStateSnapshot>({ ...defaultUiState })
   const isReady = ref(false)
 
   const selectedMonth = computed(() => snapshot.value.selectedMonth)
@@ -62,8 +62,8 @@ export const useUiStore = defineStore('ui', () => {
   const reset = (): void => {
     clearTimeout(saveTimer)
     isReady.value = false
-    snapshot.value = { ...mockUiState }
-    applyTheme(mockUiState.themeMode)
+    snapshot.value = { ...defaultUiState }
+    applyTheme(defaultUiState.themeMode)
   }
 
   const setThemeMode = (mode: ThemeMode): void => {
@@ -81,7 +81,7 @@ export const useUiStore = defineStore('ui', () => {
 
   const clearAllData = async (): Promise<void> => {
     clearTimeout(saveTimer)
-    snapshot.value = { ...mockUiState }
+    snapshot.value = { ...defaultUiState }
     applyTheme(snapshot.value.themeMode)
     const { user } = useAuth()
     if (user.value) await saveProfile(user.value.id, snapshot.value)

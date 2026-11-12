@@ -57,19 +57,37 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **Computation is pure and stateless** — `src/services/projectionService.ts` takes inputs and returns rows, summary, milestones, SVG trend path, and share text. Nothing in services touches stores or Supabase.
 
+**Row mapping** — `src/services/mappers.ts` is the only place database rows / JSON columns are turned into domain models. Fetches, Realtime payloads and broadcasts all use it; do not hand-map rows elsewhere.
+
+**Defaults and options** — `src/data/defaults.ts` holds the default inputs/UI state and the currency and locale option lists.
+
+**Preferences have one home each** — currency and locale are edited only in `SettingsView`; start month only in `ProjectionsView`.
+
+**Multi-currency** (`src/services/currencyService.ts`) — every stored amount keeps the currency it was entered in; nothing is rewritten when rates move.
+- Income/expense items and monthly adjustments have an optional `currency`; `ProjectionInputs.currency` is the base currency (plain `monthlyIncome`/`monthlyExpenses` fields, and the fallback for untagged items). A `SavingsGoal` has a `currency`; its deposits are in it.
+- `profiles.currency_code` (`useCurrency().currencyCode`) is the **display** currency only. `toDisplayInputs` / `toDisplayGoal` / `toDisplayDeposits` convert on the way to the screen; `useEffectiveProjection` applies them, so projection maths always runs on single-currency inputs.
+- Changing the display currency in Settings calls `rebaseInputs`, which converts only the two plain fields and stamps untagged items with the old base currency.
+- Rates come from `useExchangeRates` (fetched on app start, last good set cached in localStorage). `convert()` returns the amount unchanged when a rate is missing — `useEffectiveProjection().unconvertibleCurrencies` drives the warning.
+- A goal's currency can be changed when editing it, either converting (the `change_goal_currency` RPC, migration `015_`, converts the goal and all its deposits atomically) or relabelling (plain update of `currency`).
+- Never sum raw item amounts in a view; use `baseTotals` / `monthlyTotals(toDisplayInputs(...))`.
+
+**Save errors** — write functions in `src/services/` call `reportSaveError()` (`src/lib/notify.ts`); `App.vue` shows the result as a toast. Do not swallow write failures with `console.warn`.
+
 **Collaboration store** (`src/stores/collaboration.ts`):
 - Manages collaborators, shared budgets, activity log, and the active budget context (whose data is being viewed)
 - `activeBudgetContext` — when non-null, the user is viewing another owner's budget; `isViewingSharedBudget` / `isReadOnly` are computed from this
 - `startRealtime(ownerId)` subscribes to a single Supabase channel `budget:{ownerId}` covering `projection_inputs`, `scenarios`, `expense_items`, and `collaborations` tables via `postgres_changes`, plus a `Broadcast` channel for profile updates
 - **Important:** profile currency/locale updates use Broadcast (not `postgres_changes`) because cross-table RLS makes `postgres_changes` on `profiles` unreliable for collaborators. The owner calls `broadcastProfileUpdate()` after saving; collaborators receive `profile_updated` events and update `activeBudgetContext`
 
-**Savings architecture** (`src/stores/savings.ts`, `src/services/savingsProjectionService.ts`):
-- `SavingsGoal` has `monthlyContribution` and `targetDate` (nullable ISO date). Goals with `status === 'active'` contribute to monthly expenses.
-- Savings contributions are tracked in `ProjectionInputs.savingsAdjustments` — a **separate** array from `monthlyAdjustments` (user one-time adjustments). This separation lets the table display them with distinct styling.
-- `buildSavingsContributionAdjustments(goals, startMonth, months)` generates positive `expenseAdjustment` entries **only for months where each goal is still active** (respects `targetDate`). Months after a goal ends simply have no entry — expenses drop naturally.
-- `mergeDepositsIntoAdjustments(existing, deposits)` merges one-time deposits into `monthlyAdjustments` as extra expense for their specific month.
-- In views, `effectiveInputs` computes both `monthlyAdjustments` (deposits merged) and `savingsAdjustments` (contribution schedule) and returns them as separate fields on `ProjectionInputs`.
-- In `ProjectionTable`, `row.savingsContribution > 0` shows a red wallet sub-line in the Expenses cell and a wallet badge in the Month cell. This is visually distinct from the amber badge/delta used for user one-time adjustments (`row.expenseAdjustment !== 0`).
+**Money model** (`src/services/projectionService.ts`, `src/services/savingsProjectionService.ts`):
+- The projection tracks **cash** and **savings** separately. `ProjectionInputs.startingBalance` (with `startingBalanceCurrency`) is the cash on hand when the projection begins; it is stored on `projection_inputs` only and is deliberately **not** part of a scenario — `loadScenario` keeps the current value.
+- Savings are a **transfer, not an expense**. A contribution moves money from cash to savings and leaves net worth unchanged. `ProjectionRow` has `expenses` (spending only), `net` (income − expenses), `savingsContribution`, `cashChange` (net − contribution), `cumulativeBalance` (cash), `savingsBalance` and `netWorth` (cash + savings).
+- `SavingsGoal` has `monthlyContribution` and `targetDate` (nullable ISO date). `buildSavingsContributionAdjustments(goals, startMonth, months)` returns the planned transfers per month: a goal contributes while `status === 'active'`, its target date has not passed, and it has not reached its target (the last contribution is trimmed to land exactly on target).
+- `savingsStartingBalance(goals)` (sum of every goal's `currentAmount`) is the opening savings balance. Recorded **deposits are history**: they are already in `currentAmount` and are not replayed as cash movements in the projection.
+- `useEffectiveProjection` puts both on the inputs as the system-generated fields `savingsAdjustments` and `savingsStartingBalance`, separate from the user's `monthlyAdjustments`.
+- In `ProjectionTable`, a month with a transfer shows a wallet sub-line under **Net** and a wallet badge in the Month cell; the **Net worth** column appears only when the budget has savings (`showNetWorth`). User one-time adjustments keep the amber badge/delta (`row.expenseAdjustment !== 0`).
+
+**Typecheck** — `npm run typecheck` runs `vue-tsc --noEmit -p tsconfig.app.json`. The root `tsconfig.json` only has project references, so plain `vue-tsc --noEmit` checks nothing.
 
 **ProjectionsView form sync pattern:**
 `ProjectionsView.vue` initialises a local `form` reactive object from the store on setup. A `watch(() => projectionStore.inputs, ...)` keeps the form in sync when the store changes externally (scenario load, realtime update). Without this watch, loading a scenario would not update the visible form fields.

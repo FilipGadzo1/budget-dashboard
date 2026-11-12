@@ -5,56 +5,39 @@ import { useRouter } from 'vue-router'
 import TrendChart from '@/components/dashboard/TrendChart.vue'
 import MilestonesCard from '@/components/dashboard/MilestonesCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
-import {
-  buildProjectionMilestones,
-  buildProjectionRows,
-  buildProjectionSummary,
-} from '@/services/projectionService'
-import { buildSavingsContributionAdjustments } from '@/services/savingsProjectionService'
-import type { ProjectionInputs } from '@/models'
+import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
 import { useProjectionStore } from '@/stores/projection'
-import { useSavingsStore } from '@/stores/savings'
-import { useUiStore } from '@/stores/ui'
 
 const router = useRouter()
 const projectionStore = useProjectionStore()
-const savingsStore = useSavingsStore()
-const uiStore = useUiStore()
-const { formatCurrency, formatCompactCurrency, locale, selectedMonth } = useCurrency()
+const { formatCurrency, formatCompactCurrency } = useCurrency()
+const { rows: projectionRows, summary, milestones, hasSavings } = useEffectiveProjection()
 
-// Effective inputs — savings contributions tracked separately so the table
-// can display them distinctly from user one-time adjustments
-const effectiveInputs = computed((): ProjectionInputs => {
-  const base = projectionStore.inputs
-  const savingsAdjustments = buildSavingsContributionAdjustments(
-    savingsStore.goals,
-    selectedMonth.value,
-    base.months,
-  )
-  return { ...base, savingsAdjustments }
-})
-
-const projectionRows = computed(() =>
-  buildProjectionRows(effectiveInputs.value, selectedMonth.value, locale.value),
-)
-const summary = computed(() => buildProjectionSummary(projectionRows.value))
-const milestones = computed(() => buildProjectionMilestones(projectionRows.value))
 // Use first row's net so it reflects the actual per-month savings contribution
 const monthlyNet = computed(() => projectionRows.value[0]?.net ?? 0)
 const breakEvenGap = computed(() => Math.max(-monthlyNet.value, 0))
+// Net minus what moves into savings: how the cash balance actually changes
+const monthlyCashChange = computed(() => projectionRows.value[0]?.cashChange ?? 0)
+
+const noData = computed(() => summary.value.totalIncome === 0 && summary.value.totalExpenses === 0)
+
+// "Strong" = the plan ends with at least three months of expenses in reserve.
+// Relative to the user's own spending, so it means the same in any currency.
+const hasStrongReserve = computed(() => {
+  const avgMonthlyExpenses = summary.value.totalExpenses / Math.max(1, projectionRows.value.length)
+  return avgMonthlyExpenses > 0 && summary.value.endingBalance >= avgMonthlyExpenses * 3
+})
 
 const statusPill = computed(() => {
-  const noData = projectionStore.inputs.monthlyIncome === 0 && effectiveInputs.value.monthlyExpenses === 0
-  if (noData) return { label: 'No data', tone: '' }
+  if (noData.value) return { label: 'No data', tone: '' }
   if (monthlyNet.value < 0) return { label: 'Deficit', tone: 'status-pill-negative' }
-  if (summary.value.endingBalance >= 10000) return { label: 'Strong', tone: 'status-pill-positive' }
+  if (hasStrongReserve.value) return { label: 'Strong', tone: 'status-pill-positive' }
   return { label: 'On track', tone: 'status-pill-positive' }
 })
 
 const insights = computed(() => {
   const list: Array<{ title: string; body: string; tone: 'positive' | 'warning' }> = []
-  const noData = projectionStore.inputs.monthlyIncome === 0 && effectiveInputs.value.monthlyExpenses === 0
-  if (noData) {
+  if (noData.value) {
     list.push({
       title: 'No data yet',
       body: 'Add your monthly income and expenses on the Projections page to see your financial forecast.',
@@ -73,10 +56,17 @@ const insights = computed(() => {
       tone: 'positive',
     })
   }
-  if (summary.value.endingBalance >= 10000) {
+  if (monthlyNet.value >= 0 && monthlyCashChange.value < 0) {
+    list.push({
+      title: 'Saving more than you have spare',
+      body: `Your savings contributions are ${formatCurrency(-monthlyCashChange.value)} more than your monthly surplus, so your cash balance falls each month even though your net worth grows.`,
+      tone: 'warning',
+    })
+  }
+  if (hasStrongReserve.value) {
     list.push({
       title: 'Strong ending balance',
-      body: 'The projection builds a healthy reserve by the end of the horizon.',
+      body: 'The plan ends with more than three months of expenses in reserve.',
       tone: 'positive',
     })
   }
@@ -140,11 +130,24 @@ const insights = computed(() => {
         </div>
         <div class="dash-summary-sep" />
         <div class="dash-summary-item">
-          <span class="dash-summary-label">Ending Balance</span>
+          <span class="dash-summary-label">Ending Cash</span>
           <span class="dash-summary-value" :class="summary.endingBalance >= 0 ? 'text-positive' : 'text-negative'">
             {{ formatCompactCurrency(summary.endingBalance) }}
           </span>
         </div>
+        <template v-if="hasSavings">
+          <div class="dash-summary-sep" />
+          <div class="dash-summary-item">
+            <span class="dash-summary-label">Net Worth</span>
+            <span
+              class="dash-summary-value"
+              :class="summary.endingNetWorth >= 0 ? 'text-positive' : 'text-negative'"
+              title="Ending cash plus savings"
+            >
+              {{ formatCompactCurrency(summary.endingNetWorth) }}
+            </span>
+          </div>
+        </template>
       </div>
     </div>
 

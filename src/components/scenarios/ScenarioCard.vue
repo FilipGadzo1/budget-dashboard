@@ -3,6 +3,8 @@ import type { ProjectionScenario } from '@/models'
 
 defineProps<{
   scenario: ProjectionScenario
+  /** Monthly income / expenses of the scenario, already in the display currency. */
+  totals: { income: number; expenses: number }
   isActive: boolean
   formatCurrency: (n: number) => string
   readonly?: boolean
@@ -26,8 +28,8 @@ defineEmits<{
         <span v-if="isActive" class="status-pill status-pill-positive text-xs">Active</span>
       </div>
       <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-secondary">
-        <span>{{ formatCurrency(scenario.inputs.monthlyIncome) }} in</span>
-        <span>{{ formatCurrency(scenario.inputs.monthlyExpenses) }} out</span>
+        <span>{{ formatCurrency(totals.income) }} in</span>
+        <span>{{ formatCurrency(totals.expenses) }} out</span>
         <span>{{ scenario.inputs.months }}mo</span>
       </div>
     </div>

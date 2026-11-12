@@ -8,12 +8,12 @@ import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
 import { useUiStore } from '@/stores/ui'
 import { fetchProfile, fetchProjectionInputs } from '@/services/database'
+import { mapExpenseItems, mapIncomeItems, mapMonthAdjustments } from '@/services/mappers'
 import type {
   ActivityEntry,
   BudgetContext,
   Collaboration,
   CollaborationRole,
-  MonthAdjustment,
   OnlineUser,
   SharedBudget,
 } from '@/models'
@@ -196,6 +196,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     projectionStore.resetStore()
     savingsStore.resetStore()
     await Promise.all([projectionStore.hydrate(context.ownerId), savingsStore.hydrate(context.ownerId)])
+    projectionStore.ensureCurrency(context.ownerCurrencyCode)
 
     // Switch Realtime subscription to the new budget
     startRealtime(context.ownerId)
@@ -223,6 +224,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     projectionStore.resetStore()
     savingsStore.resetStore()
     await Promise.all([projectionStore.hydrate(), savingsStore.hydrate()])
+    projectionStore.ensureCurrency(useUiStore().currencyCode)
 
     // Switch Realtime subscription back to own budget
     const userId = getUserId()
@@ -298,21 +300,18 @@ export const useCollaborationStore = defineStore('collaboration', () => {
       { event: 'UPDATE', schema: 'public', table: 'projection_inputs', filter: `user_id=eq.${ownerId}` },
       (payload) => {
         const row = payload.new as Record<string, unknown>
-        const rawAdj = Array.isArray(row.monthly_adjustments) ? (row.monthly_adjustments as unknown[]) : []
-        const monthlyAdjustments: MonthAdjustment[] = rawAdj.map((a: any) => ({
-          id: a.id ?? crypto.randomUUID(),
-          monthKey: a.monthKey ?? '',
-          incomeAdjustment: Number(a.incomeAdjustment ?? 0),
-          expenseAdjustment: Number(a.expenseAdjustment ?? 0),
-          note: a.note ?? undefined,
-        }))
-        projectionStore.applyRemoteFullInputs(
-          Number(row.monthly_income),
-          Number(row.monthly_expenses),
-          row.months as number,
-          projectionStore.inputs.expenseItems,
-          monthlyAdjustments,
-        )
+        // Expense items are omitted: they live in their own table and arrive via
+        // the expense_items subscription below.
+        projectionStore.applyRemoteFullInputs({
+          monthlyIncome: Number(row.monthly_income),
+          monthlyExpenses: Number(row.monthly_expenses),
+          months: row.months as number,
+          currency: (row.currency as string | null) ?? undefined,
+          startingBalance: row.starting_balance == null ? undefined : Number(row.starting_balance),
+          startingBalanceCurrency: (row.starting_balance_currency as string | null) ?? undefined,
+          incomeItems: Array.isArray(row.income_items) ? mapIncomeItems(row.income_items) : undefined,
+          monthlyAdjustments: mapMonthAdjustments(row.monthly_adjustments),
+        })
       },
     )
 
@@ -390,6 +389,11 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     )
     channel.on(
       'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'savings_deposits' },
+      (payload) => savingsStore.applyRemoteDepositUpdate(payload.new as Record<string, unknown>),
+    )
+    channel.on(
+      'postgres_changes',
       { event: 'DELETE', schema: 'public', table: 'savings_deposits' },
       (payload) => {
         const row = payload.old as { id: string; goal_id: string }
@@ -449,6 +453,10 @@ export const useCollaborationStore = defineStore('collaboration', () => {
               monthly_income: inputs.monthlyIncome,
               monthly_expenses: inputs.monthlyExpenses,
               months: inputs.months,
+              currency: inputs.currency,
+              starting_balance: inputs.startingBalance,
+              starting_balance_currency: inputs.startingBalanceCurrency,
+              income_items: inputs.incomeItems,
               expense_items: inputs.expenseItems,
               monthly_adjustments: inputs.monthlyAdjustments,
             },
@@ -460,13 +468,19 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
     channel.on('broadcast', { event: 'inputs_updated' }, ({ payload }) => {
       const p = payload as Record<string, unknown>
-      projectionStore.applyRemoteFullInputs(
-        Number(p.monthly_income),
-        Number(p.monthly_expenses),
-        p.months as number,
-        Array.isArray(p.expense_items) ? (p.expense_items as import('@/models').ExpenseItem[]) : [],
-        Array.isArray(p.monthly_adjustments) ? (p.monthly_adjustments as MonthAdjustment[]) : [],
-      )
+      // A field missing from the payload (e.g. sent by a client on an older build)
+      // is left untouched rather than wiped.
+      projectionStore.applyRemoteFullInputs({
+        monthlyIncome: Number(p.monthly_income),
+        monthlyExpenses: Number(p.monthly_expenses),
+        months: p.months as number,
+        currency: typeof p.currency === 'string' ? p.currency : undefined,
+        startingBalance: typeof p.starting_balance === 'number' ? p.starting_balance : undefined,
+        startingBalanceCurrency: typeof p.starting_balance_currency === 'string' ? p.starting_balance_currency : undefined,
+        incomeItems: Array.isArray(p.income_items) ? mapIncomeItems(p.income_items) : undefined,
+        expenseItems: Array.isArray(p.expense_items) ? mapExpenseItems(p.expense_items) : undefined,
+        monthlyAdjustments: Array.isArray(p.monthly_adjustments) ? mapMonthAdjustments(p.monthly_adjustments) : undefined,
+      })
     })
 
     // ── Presence ──

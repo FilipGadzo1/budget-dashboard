@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -9,6 +9,8 @@ import Textarea from 'primevue/textarea'
 import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import { useExchangeRates } from '@/composables/useExchangeRates'
+import { currencyOptions } from '@/data/defaults'
 import type { SavingsGoal, SavingsGoalStatus } from '@/models'
 import { buildErrorMap, savingsGoalSchema } from '@/validation/forms'
 
@@ -22,15 +24,19 @@ const emit = defineEmits<{
   save: [data: {
     name: string
     emoji: string
+    currency: string
     targetAmount: number
     monthlyContribution: number
     targetDate: string | null
     status: SavingsGoalStatus
     note: string | null
+    /** Editing only: the currency changed and existing amounts should be converted. */
+    convertAmounts: boolean
   }]
 }>()
 
 const { currencyCode, locale } = useCurrency()
+const { getRate, fetchRates } = useExchangeRates()
 
 const statusOptions = [
   { label: 'Active', value: 'active' },
@@ -41,6 +47,7 @@ const statusOptions = [
 const defaultForm = () => ({
   name: '',
   emoji: '🎯',
+  currency: currencyCode.value,
   targetAmount: 0 as number | null,
   monthlyContribution: 0 as number | null,
   targetDate: '',
@@ -52,6 +59,28 @@ const form = reactive(defaultForm())
 const errors = reactive<Record<string, string>>({})
 
 const isEditing = computed(() => !!props.goal)
+
+// ─── Changing the currency of an existing goal ────────────────────────────────
+// Two different intentions, so the user picks:
+//   convert — "show this goal in SEK from now on": every amount is converted
+//   relabel — "I entered these numbers in SEK all along": numbers stay as typed
+const currencyChangeMode = ref<'convert' | 'relabel'>('convert')
+
+const originalCurrency = computed(() => props.goal?.currency ?? currencyCode.value)
+const currencyChanged = computed(() => isEditing.value && form.currency !== originalCurrency.value)
+const conversionRate = computed(() => getRate(originalCurrency.value, form.currency))
+const willConvert = computed(() => currencyChanged.value && currencyChangeMode.value === 'convert')
+const ratesMissing = computed(() => willConvert.value && conversionRate.value === null)
+
+// Keep the two amount fields in step with the chosen currency and mode, so what
+// is on screen is exactly what will be saved.
+watch([() => form.currency, currencyChangeMode, conversionRate], () => {
+  if (!props.visible || !props.goal) return
+  const rate = willConvert.value ? conversionRate.value : 1
+  if (rate === null) return
+  form.targetAmount = Math.round(props.goal.targetAmount * rate * 100) / 100
+  form.monthlyContribution = Math.round(props.goal.monthlyContribution * rate * 100) / 100
+})
 const title = computed(() => (isEditing.value ? 'Edit goal' : 'New goal'))
 
 watch(
@@ -61,6 +90,7 @@ watch(
     if (props.goal) {
       form.name = props.goal.name
       form.emoji = props.goal.emoji
+      form.currency = props.goal.currency ?? currencyCode.value
       form.targetAmount = props.goal.targetAmount
       form.monthlyContribution = props.goal.monthlyContribution
       form.targetDate = props.goal.targetDate ?? ''
@@ -70,11 +100,14 @@ watch(
       Object.assign(form, defaultForm())
     }
     Object.keys(errors).forEach((k) => delete errors[k])
+    currencyChangeMode.value = 'convert'
+    void fetchRates()
   },
 )
 
 const handleSave = async (): Promise<void> => {
   Object.keys(errors).forEach((k) => delete errors[k])
+  if (ratesMissing.value) return
 
   try {
     await savingsGoalSchema.validate(
@@ -93,11 +126,13 @@ const handleSave = async (): Promise<void> => {
   emit('save', {
     name: form.name.trim(),
     emoji: form.emoji.trim() || '🎯',
+    currency: form.currency,
     targetAmount: form.targetAmount ?? 0,
     monthlyContribution: form.monthlyContribution ?? 0,
     targetDate: form.targetDate || null,
     status: form.status,
     note: form.note.trim() || null,
+    convertAmounts: willConvert.value,
   })
   emit('update:visible', false)
 }
@@ -146,13 +181,41 @@ const handleClose = (): void => {
         </div>
       </div>
 
+      <!-- Currency -->
+      <div class="form-field">
+        <label class="form-label" for="sg-currency">Currency</label>
+        <select id="sg-currency" v-model="form.currency" class="form-select">
+          <option v-for="opt in currencyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+
+        <div v-if="currencyChanged" class="currency-change">
+          <label class="currency-change-option">
+            <input v-model="currencyChangeMode" type="radio" value="convert" />
+            <span>
+              <strong>Convert the amounts</strong> from {{ originalCurrency }} to {{ form.currency }}
+              <span class="form-hint">Target, monthly contribution, saved amount and all deposits are converted at today's rate.</span>
+            </span>
+          </label>
+          <label class="currency-change-option">
+            <input v-model="currencyChangeMode" type="radio" value="relabel" />
+            <span>
+              <strong>Keep the numbers</strong>, they were in {{ form.currency }} all along
+              <span class="form-hint">Nothing is converted; only the currency label changes.</span>
+            </span>
+          </label>
+          <p v-if="ratesMissing" class="form-error">
+            Exchange rates are unavailable right now, so the amounts can't be converted. Try again shortly.
+          </p>
+        </div>
+      </div>
+
       <!-- Target amount -->
       <div class="form-field">
         <label class="form-label" for="sg-target">Target amount <span class="text-negative">*</span></label>
         <CurrencyInput
           input-id="sg-target"
           v-model="form.targetAmount"
-          :currency="currencyCode"
+          :currency="form.currency"
           :locale="locale"
           :invalid="!!errors.targetAmount"
           fluid
@@ -166,12 +229,12 @@ const handleClose = (): void => {
         <CurrencyInput
           input-id="sg-contrib"
           v-model="form.monthlyContribution"
-          :currency="currencyCode"
+          :currency="form.currency"
           :locale="locale"
           :invalid="!!errors.monthlyContribution"
           fluid
         />
-        <p class="form-hint">This amount counts as an expense in your projections.</p>
+        <p class="form-hint">Moved from your cash balance into savings each month in projections, until the goal is reached.</p>
         <span v-if="errors.monthlyContribution" class="form-error">{{ errors.monthlyContribution }}</span>
       </div>
 
@@ -226,6 +289,35 @@ const handleClose = (): void => {
 </template>
 
 <style scoped>
+.currency-change {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  background: var(--app-surface-hover);
+}
+
+.currency-change-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.currency-change-option input {
+  margin-top: 0.2rem;
+  accent-color: var(--app-accent);
+}
+
+.currency-change-option .form-hint {
+  display: block;
+}
+
 .savings-dialog-body {
   display: flex;
   flex-direction: column;

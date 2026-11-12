@@ -11,11 +11,15 @@ import {
   computeRequiredMonthly,
 } from '@/services/savingsService'
 
-const props = defineProps<{
-  goal: SavingsGoal
-  formatCurrency: (n: number) => string
-  readonly?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    goal: SavingsGoal
+    formatCurrency: (n: number) => string
+    readonly?: boolean
+    canDelete?: boolean
+  }>(),
+  { canDelete: true },
+)
 
 defineEmits<{
   deposit: []
@@ -160,7 +164,7 @@ const targetDateLabel = computed(() => {
         Edit
       </button>
       <button
-        v-if="!readonly"
+        v-if="!readonly && canDelete"
         class="btn btn-danger btn-sm"
         @click="$emit('delete')"
       >

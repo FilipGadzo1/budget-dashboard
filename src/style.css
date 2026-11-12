@@ -89,6 +89,22 @@ html {
   background: var(--app-bg);
   color: var(--app-text);
   overflow-x: hidden;
+  /* Always reserve the scrollbar's space so the layout never shifts sideways
+     when a modal locks scrolling or a page grows past the viewport. */
+  scrollbar-gutter: stable;
+}
+
+/* Opening a modal makes PrimeVue add .p-overflow-hidden to <body> with
+   padding-right equal to the scrollbar width. Here the page scrolls on <html>
+   (both html and body set overflow-x), so the scrollbar never left and that
+   padding just squeezed the page a few pixels. Lock scrolling on <html> instead;
+   the reserved gutter above keeps everything in place. */
+body.p-overflow-hidden {
+  padding-right: 0 !important;
+}
+
+html:has(body.p-overflow-hidden) {
+  overflow-y: hidden;
 }
 
 body {
@@ -420,27 +436,11 @@ button, input, select, textarea {
   font-size: 1.25rem;
 }
 
-/* ── Mobile overlay ───────────────────────────────────────────────── */
-
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 55;
-}
-
 /* ── Responsive ───────────────────────────────────────────────────── */
 
 @media (max-width: 1023px) {
   .sidebar {
     transform: translateX(-100%);
-  }
-  .sidebar.sidebar-open {
-    transform: translateX(0);
-  }
-  .sidebar-overlay.sidebar-overlay-visible {
-    display: block;
   }
   .mobile-topbar { display: flex; }
   .mobile-tabs { display: block; }
@@ -802,8 +802,16 @@ button, input, select, textarea {
   background: transparent !important;
 }
 
+/* Tall dialogs scroll inside themselves instead of running off the screen.
+   Fixed-height dialogs (Income/Expenses) opt out with an inline overflow: hidden
+   through PassThrough and scroll an inner list instead. */
+.p-dialog {
+  max-height: calc(100dvh - 2rem) !important;
+}
+
 .p-dialog .p-dialog-content {
-  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: auto;
 }
 
 .p-inputtext.app-input-invalid,

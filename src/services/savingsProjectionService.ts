@@ -1,52 +1,27 @@
-import type { MonthAdjustment, SavingsDeposit, SavingsGoal } from '@/models'
+import type { MonthAdjustment, SavingsGoal } from '@/models'
+import { monthKeyToDate } from '@/utils/date'
 
-/**
- * Merges deposit amounts into monthly adjustments as additional expense deductions
- * for the month matching each deposit's depositDate. Returns a new array; does not mutate inputs.
- * Deposits outside any existing adjustment month get a new synthetic adjustment entry.
- * Returns the same array reference when deposits is empty (no allocation needed).
- */
-export function mergeDepositsIntoAdjustments(
-  existing: MonthAdjustment[],
-  deposits: SavingsDeposit[],
-): MonthAdjustment[] {
-  if (deposits.length === 0) return existing
+// Savings are a TRANSFER, not an expense: a contribution moves money from the cash
+// balance into savings, and net worth (cash + savings) is unchanged by it.
+//
+// Recorded deposits are history. They are already included in each goal's
+// `currentAmount`, which is where the projection's savings balance starts, so they
+// are deliberately not replayed as cash movements — the starting cash balance the
+// user enters already reflects money they have moved.
 
-  // Group deposit amounts by month key (first 7 chars of YYYY-MM-DD)
-  const depositByMonth: Record<string, number> = {}
-  deposits.forEach((d) => {
-    const mk = d.depositDate.slice(0, 7)
-    depositByMonth[mk] = (depositByMonth[mk] ?? 0) + d.amount
-  })
-
-  // Update existing adjustments that overlap with deposit months
-  const updatedKeys = new Set<string>()
-  const updated: MonthAdjustment[] = existing.map((adj) => {
-    const extra = depositByMonth[adj.monthKey] ?? 0
-    if (extra === 0) return adj
-    updatedKeys.add(adj.monthKey)
-    return { ...adj, expenseAdjustment: adj.expenseAdjustment + extra }
-  })
-
-  // Add new synthetic adjustments for deposit months with no existing entry
-  Object.entries(depositByMonth).forEach(([mk, amount]) => {
-    if (updatedKeys.has(mk)) return
-    updated.push({
-      id: `__deposit__${mk}`,
-      monthKey: mk,
-      incomeAdjustment: 0,
-      expenseAdjustment: amount,
-    })
-  })
-
-  return updated
+/** What is already saved across all goals — the projection's opening savings balance. */
+export function savingsStartingBalance(goals: SavingsGoal[]): number {
+  return goals.reduce((sum, g) => sum + g.currentAmount, 0)
 }
 
 /**
- * Builds a list of per-month savings contribution adjustments for active goals.
- * Only generates entries for months where at least one goal is still active
- * (status === 'active' AND targetDate is null or >= that month).
- * Returns an empty array if no goals are active.
+ * Planned monthly transfers into savings, one entry per month that has any.
+ * A goal contributes while it is `active`, its target date (if set) has not passed,
+ * and it has not yet reached its target — the final contribution is trimmed so the
+ * goal lands exactly on target, after which that money stays in the cash balance.
+ *
+ * The amount is carried in `expenseAdjustment` of a synthetic MonthAdjustment.
+ * Goals must already be in a single currency (see `toDisplayGoal`).
  */
 export function buildSavingsContributionAdjustments(
   goals: SavingsGoal[],
@@ -56,20 +31,32 @@ export function buildSavingsContributionAdjustments(
   const activeGoals = goals.filter((g) => g.status === 'active' && g.monthlyContribution > 0)
   if (activeGoals.length === 0) return []
 
+  const saved = new Map(activeGoals.map((g) => [g.id, g.currentAmount]))
   const result: MonthAdjustment[] = []
+
   for (let i = 0; i < months; i++) {
-    const d = new Date(`${startMonth}-01`)
+    // monthKeyToDate builds a local-time date; `new Date('YYYY-MM-01')` would parse
+    // as UTC and land in the previous month for timezones behind UTC.
+    const d = monthKeyToDate(startMonth)
     d.setMonth(d.getMonth() + i, 1)
     const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const total = activeGoals
-      .filter((g) => !g.targetDate || g.targetDate.slice(0, 7) >= mk)
-      .reduce((sum, g) => sum + g.monthlyContribution, 0)
+
+    let total = 0
+    activeGoals.forEach((g) => {
+      if (g.targetDate && g.targetDate.slice(0, 7) < mk) return
+      const soFar = saved.get(g.id) ?? 0
+      const contribution = Math.min(g.monthlyContribution, Math.max(0, g.targetAmount - soFar))
+      if (contribution <= 0) return
+      saved.set(g.id, soFar + contribution)
+      total += contribution
+    })
+
     if (total > 0) {
       result.push({
         id: `__savings_contribution__${mk}`,
         monthKey: mk,
         incomeAdjustment: 0,
-        expenseAdjustment: total,
+        expenseAdjustment: Math.round(total * 100) / 100,
       })
     }
   }

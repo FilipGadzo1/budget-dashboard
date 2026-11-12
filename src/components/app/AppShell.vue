@@ -11,7 +11,6 @@ const router = useRouter()
 const uiStore = useUiStore()
 const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
-const sidebarOpen = ref(false)
 const avatarMenuOpen = ref(false)
 
 const pageTitle = computed(() => {
@@ -35,14 +34,6 @@ const mobileTabItems = navItems.filter((item) => item.path !== '/settings')
 const onlineOthers = computed(() =>
   collabStore.onlineUsers.filter((u) => u.userId !== user.value?.id),
 )
-
-const toggleSidebar = (): void => {
-  sidebarOpen.value = !sidebarOpen.value
-}
-
-const closeSidebar = (): void => {
-  sidebarOpen.value = false
-}
 
 const toggleAvatarMenu = (): void => {
   avatarMenuOpen.value = !avatarMenuOpen.value
@@ -139,15 +130,8 @@ const exitContext = async (): Promise<void> => {
   <!-- Avatar menu backdrop -->
   <div v-if="avatarMenuOpen" class="avatar-menu-backdrop" @click="closeAvatarMenu" />
 
-  <!-- Sidebar overlay (mobile) -->
-  <div
-    class="sidebar-overlay"
-    :class="{ 'sidebar-overlay-visible': sidebarOpen }"
-    @click="closeSidebar"
-  />
-
   <!-- Sidebar -->
-  <aside class="sidebar" :class="{ 'sidebar-open': sidebarOpen }">
+  <aside class="sidebar">
     <div class="sidebar-brand">
       <div class="sidebar-logo">B</div>
       <div>
@@ -178,7 +162,6 @@ const exitContext = async (): Promise<void> => {
         :to="item.path"
         class="sidebar-link"
         :class="{ 'sidebar-link-active': route.path === item.path }"
-        @click="closeSidebar"
       >
         <i :class="[item.icon, 'sidebar-link-icon']" />
         {{ item.label }}
@@ -244,7 +227,6 @@ const exitContext = async (): Promise<void> => {
         :to="item.path"
         class="mobile-tab"
         :class="{ 'mobile-tab-active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)) }"
-        @click="closeSidebar"
       >
         <div class="mobile-tab-icon-wrap">
           <i :class="[item.icon, 'mobile-tab-icon']" />

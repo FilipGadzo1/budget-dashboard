@@ -11,12 +11,16 @@ import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import type { ProjectionScenario } from '@/models'
+import { monthlyTotals, rebaseInputs, toDisplayInputs } from '@/services/currencyService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 
 const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
-const { formatCurrency } = useCurrency()
+const { formatCurrency, currencyCode, convert } = useCurrency()
+
+const totalsFor = (scenario: ProjectionScenario): { income: number; expenses: number } =>
+  monthlyTotals(toDisplayInputs(scenario.inputs, currencyCode.value, convert))
 
 const scenarioName = ref('')
 const importState = reactive({
@@ -37,7 +41,15 @@ const saveScenario = (): void => {
   scenarioName.value = ''
 }
 
-const loadScenario = (id: string): void => { projectionStore.loadScenario(id) }
+const loadScenario = (id: string): void => {
+  projectionStore.loadScenario(id)
+  // A scenario saved while another display currency was active: bring its plain
+  // income/expenses fields into the current one. Itemised amounts keep their own.
+  const loaded = projectionStore.inputs
+  if (loaded.currency && loaded.currency !== currencyCode.value) {
+    projectionStore.setInputs(rebaseInputs(loaded, loaded.currency, currencyCode.value, convert))
+  }
+}
 
 const openRename = (scenario: ProjectionScenario): void => {
   renameTarget.value = scenario
@@ -145,7 +157,7 @@ const importFile = async (event: Event): Promise<void> => {
       title="No saved scenarios yet"
       description="Save your current budget inputs as a scenario to start comparing different plans side by side."
       icon="pi pi-bookmark"
-      action-label="Save baseline"
+      :action-label="collabStore.isReadOnly ? '' : 'Save baseline'"
       @action="projectionStore.saveScenario('Baseline plan')"
     />
 
@@ -155,6 +167,7 @@ const importFile = async (event: Event): Promise<void> => {
         v-for="scenario in projectionStore.savedScenarios"
         :key="scenario.id"
         :scenario="scenario"
+        :totals="totalsFor(scenario)"
         :is-active="scenario.id === projectionStore.activeScenarioId"
         :format-currency="formatCurrency"
         :readonly="collabStore.isReadOnly"

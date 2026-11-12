@@ -13,6 +13,7 @@ const props = defineProps<{
   disabled?: boolean
   invalid?: boolean
   fluid?: boolean
+  allowNegative?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -39,7 +40,7 @@ const currencySymbol = computed(() => {
       :model-value="modelValue"
       :input-id="inputId"
       mode="decimal"
-      :min="0"
+      :min="allowNegative ? undefined : 0"
       :min-fraction-digits="0"
       :max-fraction-digits="2"
       :use-grouping="true"
