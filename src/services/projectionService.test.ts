@@ -72,6 +72,31 @@ describe('projectionService', () => {
     expect(rows.map((row) => row.cumulativeBalance)).toEqual([10500, 11000])
   })
 
+  it('applies yearly items and start/end dates month by month', () => {
+    const rows = buildProjectionRows(
+      {
+        monthlyIncome: 0,
+        monthlyExpenses: 0,
+        months: 4,
+        incomeItems: [
+          { id: 'salary', name: 'Salary', amount: 3000 },
+          { id: 'raise', name: 'Raise', amount: 500, startMonth: '2026-03' },
+        ],
+        expenseItems: [
+          { id: 'rent', name: 'Rent', amount: 1000, sortOrder: 0 },
+          { id: 'insurance', name: 'Insurance', amount: 1200, sortOrder: 1, everyMonths: 12, startMonth: '2026-02' },
+          { id: 'loan', name: 'Loan', amount: 300, sortOrder: 2, endMonth: '2026-02' },
+        ],
+        monthlyAdjustments: [],
+      },
+      '2026-01',
+      'en-US',
+    )
+
+    expect(rows.map((row) => row.income)).toEqual([3000, 3000, 3500, 3500])
+    expect(rows.map((row) => row.expenses)).toEqual([1300, 2500, 1000, 1000])
+  })
+
   it('treats savings contributions as a transfer, not an expense', () => {
     const rows = buildProjectionRows(
       {

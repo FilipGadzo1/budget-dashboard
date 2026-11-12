@@ -1,4 +1,5 @@
 import type { ProjectionInputs, ProjectionRow } from '@/models'
+import { amountIn } from '@/services/itemsService'
 import { formatDisplayMonth, monthKeyToDate } from '@/utils/date'
 
 const addMonths = (date: Date, value: number): Date => {
@@ -16,12 +17,12 @@ export const buildProjectionRows = (
   locale: string,
 ): ProjectionRow[] => {
   const startDate = monthKeyToDate(startMonth)
-  const baseIncome = inputs.incomeItems?.length
-    ? inputs.incomeItems.reduce((s, i) => s + i.amount, 0)
-    : inputs.monthlyIncome
-  const baseExpenses = inputs.expenseItems?.length
-    ? inputs.expenseItems.reduce((s, i) => s + i.amount, 0)
-    : inputs.monthlyExpenses
+  // Itemised budgets are summed month by month, because items can be yearly or
+  // quarterly and can start or stop part-way through the projection.
+  const incomeFor = (monthKey: string): number =>
+    inputs.incomeItems?.length ? amountIn(inputs.incomeItems, monthKey, startMonth) : inputs.monthlyIncome
+  const expensesFor = (monthKey: string): number =>
+    inputs.expenseItems?.length ? amountIn(inputs.expenseItems, monthKey, startMonth) : inputs.monthlyExpenses
   const adjustments = inputs.monthlyAdjustments ?? []
   const savingsAdjs = inputs.savingsAdjustments ?? []
   // Cash and savings are tracked separately: a savings contribution moves money
@@ -35,8 +36,8 @@ export const buildProjectionRows = (
     const adj = adjustments.find((a) => a.monthKey === monthKey)
     const savAdj = savingsAdjs.find((a) => a.monthKey === monthKey)
     const savingsContribution = savAdj?.expenseAdjustment ?? 0
-    const rowIncome = baseIncome + (adj?.incomeAdjustment ?? 0)
-    const rowExpenses = baseExpenses + (adj?.expenseAdjustment ?? 0)
+    const rowIncome = incomeFor(monthKey) + (adj?.incomeAdjustment ?? 0)
+    const rowExpenses = expensesFor(monthKey) + (adj?.expenseAdjustment ?? 0)
     const rowNet = rowIncome - rowExpenses
     const cashChange = rowNet - savingsContribution
     cash += cashChange

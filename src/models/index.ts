@@ -4,20 +4,23 @@ export type ThemeMode = 'light' | 'dark'
 // `currency` on an item or adjustment means "the budget's base currency"
 // (`ProjectionInputs.currency`). See src/services/currencyService.ts.
 
-export interface ExpenseItem {
+// A recurring income or expense line. See src/services/itemsService.ts.
+export interface BudgetItem {
   id: string
   name: string
   amount: number
-  sortOrder: number
   currency?: string
+  everyMonths?: number   // 1/undefined = monthly, 3 = quarterly, 12 = yearly
+  startMonth?: string    // YYYY-MM, first month it applies (anchor when not monthly)
+  endMonth?: string      // YYYY-MM, last month it applies (inclusive)
+  category?: string      // expenses only
 }
 
-export interface IncomeItem {
-  id: string
-  name: string
-  amount: number
-  currency?: string
+export interface ExpenseItem extends BudgetItem {
+  sortOrder: number
 }
+
+export type IncomeItem = BudgetItem
 
 export interface MonthAdjustment {
   id: string

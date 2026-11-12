@@ -1,4 +1,5 @@
-import type { ProjectionInputs, SavingsGoal } from '@/models'
+import type { BudgetItem, ProjectionInputs, SavingsGoal } from '@/models'
+import { isActiveIn, monthlyEquivalent } from '@/services/itemsService'
 
 /** Converts `amount` from one currency code to another. */
 export type ConvertFn = (amount: number, from: string, to: string) => number
@@ -51,11 +52,17 @@ export function toDisplayInputs(
 }
 
 /**
- * Monthly income and expenses of inputs that are already in a single currency
- * (see `toDisplayInputs`): the sum of the items when itemised, else the plain field.
+ * Typical monthly income and expenses of inputs that are already in a single
+ * currency (see `toDisplayInputs`). When itemised: the monthly equivalent of every
+ * item (a yearly bill counts for a twelfth), limited to items live in `monthKey`
+ * when one is given. Otherwise the plain field.
  */
-export function monthlyTotals(inputs: ProjectionInputs): { income: number; expenses: number } {
-  const sum = (items: Array<{ amount: number }>): number => items.reduce((s, i) => s + i.amount, 0)
+export function monthlyTotals(
+  inputs: ProjectionInputs,
+  monthKey?: string,
+): { income: number; expenses: number } {
+  const sum = (items: BudgetItem[]): number =>
+    items.reduce((s, i) => (!monthKey || isActiveIn(i, monthKey) ? s + monthlyEquivalent(i) : s), 0)
   return {
     income: inputs.incomeItems?.length ? sum(inputs.incomeItems) : inputs.monthlyIncome,
     expenses: inputs.expenseItems?.length ? sum(inputs.expenseItems) : inputs.monthlyExpenses,

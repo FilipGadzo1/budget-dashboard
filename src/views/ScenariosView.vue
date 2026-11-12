@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -9,9 +9,11 @@ import DialogHeader from '@/components/shared/DialogHeader.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
+import ScenarioComparison, { type ComparisonRow } from '@/components/scenarios/ScenarioComparison.vue'
 import { useCurrency } from '@/composables/useCurrency'
-import type { ProjectionScenario } from '@/models'
-import { monthlyTotals, rebaseInputs, toDisplayInputs } from '@/services/currencyService'
+import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
+import type { ProjectionInputs, ProjectionScenario } from '@/models'
+import { rebaseInputs } from '@/services/currencyService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 
@@ -19,8 +21,33 @@ const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
 const { formatCurrency, currencyCode, convert } = useCurrency()
 
+const { projectPlan } = useEffectiveProjection()
+
 const totalsFor = (scenario: ProjectionScenario): { income: number; expenses: number } =>
-  monthlyTotals(toDisplayInputs(scenario.inputs, currencyCode.value, convert))
+  projectPlan(scenario.inputs).totals
+
+// The live plan followed by every saved scenario, each projected the same way.
+const comparisonRows = computed((): ComparisonRow[] => {
+  const row = (id: string, name: string, inputs: ProjectionInputs, flags: { isCurrent: boolean; isActive: boolean }): ComparisonRow => {
+    const plan = projectPlan(inputs)
+    return {
+      id,
+      name,
+      ...flags,
+      income: plan.totals.income,
+      expenses: plan.totals.expenses,
+      months: plan.months,
+      endingBalance: plan.summary.endingBalance,
+      firstNegativeMonthLabel: plan.milestones.firstNegativeMonthLabel,
+    }
+  }
+  return [
+    row('__current__', 'Current plan', projectionStore.inputs, { isCurrent: true, isActive: false }),
+    ...projectionStore.savedScenarios.map((s) =>
+      row(s.id, s.name, s.inputs, { isCurrent: false, isActive: s.id === projectionStore.activeScenarioId }),
+    ),
+  ]
+})
 
 const scenarioName = ref('')
 const importState = reactive({
@@ -161,21 +188,25 @@ const importFile = async (event: Event): Promise<void> => {
       @action="projectionStore.saveScenario('Baseline plan')"
     />
 
-    <!-- Scenario list -->
-    <div v-else class="grid gap-3 lg:grid-cols-2">
-      <ScenarioCard
-        v-for="scenario in projectionStore.savedScenarios"
-        :key="scenario.id"
-        :scenario="scenario"
-        :totals="totalsFor(scenario)"
-        :is-active="scenario.id === projectionStore.activeScenarioId"
-        :format-currency="formatCurrency"
-        :readonly="collabStore.isReadOnly"
-        @load="loadScenario(scenario.id)"
-        @rename="openRename(scenario)"
-        @delete="openDelete(scenario.id)"
-      />
-    </div>
+    <!-- Comparison + scenario list -->
+    <template v-else>
+      <ScenarioComparison class="mb-6" :rows="comparisonRows" :format-currency="formatCurrency" />
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <ScenarioCard
+          v-for="scenario in projectionStore.savedScenarios"
+          :key="scenario.id"
+          :scenario="scenario"
+          :totals="totalsFor(scenario)"
+          :is-active="scenario.id === projectionStore.activeScenarioId"
+          :format-currency="formatCurrency"
+          :readonly="collabStore.isReadOnly"
+          @load="loadScenario(scenario.id)"
+          @rename="openRename(scenario)"
+          @delete="openDelete(scenario.id)"
+        />
+      </div>
+    </template>
 
     <!-- Rename dialog -->
     <Dialog v-model:visible="showRenameDialog" modal dismissable-mask :draggable="false" :style="{ width: 'min(92vw, 26rem)' }">

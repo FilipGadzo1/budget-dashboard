@@ -15,12 +15,25 @@ type Row = Record<string, any>
 
 const asArray = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : [])
 
+// Schedule and category of an item. Accepts both spellings: snake_case from the
+// expense_items table, camelCase from JSONB columns and broadcasts.
+const itemDetails = (i: Row) => {
+  const every = Number(i.everyMonths ?? i.every_months ?? 1)
+  return {
+    currency: i.currency ?? undefined,
+    everyMonths: every > 1 ? every : undefined,
+    startMonth: i.startMonth ?? i.start_month ?? undefined,
+    endMonth: i.endMonth ?? i.end_month ?? undefined,
+    category: i.category ?? undefined,
+  }
+}
+
 export const mapIncomeItems = (raw: unknown): IncomeItem[] =>
   asArray(raw).map((i) => ({
     id: i.id ?? crypto.randomUUID(),
     name: i.name ?? '',
     amount: Number(i.amount ?? 0),
-    currency: i.currency ?? undefined,
+    ...itemDetails(i),
   }))
 
 export const mapExpenseItems = (raw: unknown): ExpenseItem[] =>
@@ -29,7 +42,7 @@ export const mapExpenseItems = (raw: unknown): ExpenseItem[] =>
     name: i.name ?? '',
     amount: Number(i.amount ?? 0),
     sortOrder: i.sort_order ?? i.sortOrder ?? 0,
-    currency: i.currency ?? undefined,
+    ...itemDetails(i),
   }))
 
 export const mapMonthAdjustments = (raw: unknown): MonthAdjustment[] =>

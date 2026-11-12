@@ -8,14 +8,13 @@ import CurrencyInput from '@/components/shared/CurrencyInput.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
-import ExpensesDialog from '@/components/projections/ExpensesDialog.vue'
-import IncomeDialog from '@/components/projections/IncomeDialog.vue'
+import ItemsDialog from '@/components/projections/ItemsDialog.vue'
 import ProjectionTable from '@/components/projections/ProjectionTable.vue'
 import { useCurrency } from '@/composables/useCurrency'
 import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
 import { useExchangeRates } from '@/composables/useExchangeRates'
 import { currencyOptions } from '@/data/defaults'
-import type { ExpenseItem, IncomeItem, MonthAdjustment } from '@/models'
+import type { BudgetItem, MonthAdjustment } from '@/models'
 import { buildProjectionShareSummary } from '@/services/projectionService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
@@ -96,7 +95,7 @@ const openIncomeEdit = (): void => {
   showIncomeDialog.value = true
 }
 
-const onIncomeItemsUpdate = (items: IncomeItem[]): void => {
+const onIncomeItemsUpdate = (items: BudgetItem[]): void => {
   projectionStore.setIncomeItems(items)
 }
 
@@ -121,8 +120,8 @@ const openExpensesEdit = (): void => {
   showExpensesDialog.value = true
 }
 
-const onExpenseItemsUpdate = (items: ExpenseItem[]): void => {
-  projectionStore.setExpenseItems(items)
+const onExpenseItemsUpdate = (items: BudgetItem[]): void => {
+  projectionStore.setExpenseItems(items.map((item, index) => ({ ...item, sortOrder: index })))
 }
 
 // The table edits adjustments in the display currency.
@@ -378,7 +377,7 @@ const downloadShareSummary = (): void => {
           />
           <div class="proj-exp-meta">
             <p v-if="hasIncomeItems" class="proj-meta-note">
-              Sum of {{ incomeItems.length }} source{{ incomeItems.length !== 1 ? 's' : '' }}
+              Average per month across {{ incomeItems.length }} source{{ incomeItems.length !== 1 ? 's' : '' }}
             </p>
             <p v-else-if="formErrors.monthlyIncome" class="form-error">{{ formErrors.monthlyIncome }}</p>
           </div>
@@ -424,7 +423,7 @@ const downloadShareSummary = (): void => {
           />
           <div class="proj-exp-meta">
             <p v-if="hasExpenseItems" class="proj-meta-note">
-              Sum of {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
+              Average per month across {{ expenseItems.length }} item{{ expenseItems.length !== 1 ? 's' : '' }}
             </p>
             <p v-else-if="formErrors.monthlyExpenses" class="form-error">{{ formErrors.monthlyExpenses }}</p>
             <p v-if="monthlyToSavings > 0" class="proj-meta-savings">
@@ -500,25 +499,29 @@ const downloadShareSummary = (): void => {
     </div>
 
     <!-- ── Dialogs ────────────────────────────────────────────────── -->
-    <IncomeDialog
+    <ItemsDialog
       v-model:visible="showIncomeDialog"
+      kind="income"
       :initial-mode="incomeDialogMode"
       :model-value="incomeItems"
       :currency="currencyCode"
       :locale="locale"
       :fallback-currency="baseCurrency"
       :to-display="toDisplay"
+      :start-month="selectedMonth"
       @update:model-value="onIncomeItemsUpdate"
     />
 
-    <ExpensesDialog
+    <ItemsDialog
       v-model:visible="showExpensesDialog"
+      kind="expense"
       :initial-mode="expensesDialogMode"
       :model-value="expenseItems"
       :currency="currencyCode"
       :locale="locale"
       :fallback-currency="baseCurrency"
       :to-display="toDisplay"
+      :start-month="selectedMonth"
       @update:model-value="onExpenseItemsUpdate"
     />
 

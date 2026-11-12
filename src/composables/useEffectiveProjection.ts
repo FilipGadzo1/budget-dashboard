@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useCurrency } from '@/composables/useCurrency'
 import type { ProjectionInputs } from '@/models'
 import { monthlyTotals, toDisplayGoal, toDisplayInputs } from '@/services/currencyService'
+import { expensesByCategory } from '@/services/itemsService'
 import {
   buildProjectionMilestones,
   buildProjectionRows,
@@ -26,22 +27,55 @@ export const useEffectiveProjection = () => {
   // Stored inputs with every amount converted to the display currency.
   const displayInputs = computed(() => toDisplayInputs(projectionStore.inputs, currencyCode.value, convert))
 
-  // Monthly income / expenses before one-time adjustments.
-  const baseTotals = computed(() => monthlyTotals(displayInputs.value))
+  // Typical monthly income / expenses (before one-time adjustments): items live in
+  // the first projection month, with yearly and quarterly ones spread evenly.
+  const baseTotals = computed(() => monthlyTotals(displayInputs.value, selectedMonth.value))
+
+  // Monthly spending per category, for itemised budgets.
+  const categoryBreakdown = computed(() =>
+    expensesByCategory(displayInputs.value.expenseItems, selectedMonth.value),
+  )
 
   const displayGoals = computed(() =>
     savingsStore.goals.map((g) => toDisplayGoal(g, currencyCode.value, convert)),
   )
 
-  const effectiveInputs = computed((): ProjectionInputs => ({
-    ...displayInputs.value,
+  // Adds the savings picture to inputs that are already in the display currency.
+  const withSavings = (inputs: ProjectionInputs): ProjectionInputs => ({
+    ...inputs,
     savingsStartingBalance: savingsStartingBalance(displayGoals.value),
     savingsAdjustments: buildSavingsContributionAdjustments(
       displayGoals.value,
       selectedMonth.value,
-      displayInputs.value.months,
+      inputs.months,
     ),
-  }))
+  })
+
+  const effectiveInputs = computed((): ProjectionInputs => withSavings(displayInputs.value))
+
+  /**
+   * Projects any set of inputs (e.g. a saved scenario) the same way as the live
+   * plan: converted to the display currency, from the current starting balance,
+   * with the current savings goals. Used to compare plans side by side.
+   */
+  const projectPlan = (inputs: ProjectionInputs) => {
+    const display = toDisplayInputs(inputs, currencyCode.value, convert)
+    const planRows = buildProjectionRows(
+      withSavings({
+        ...display,
+        startingBalance: displayInputs.value.startingBalance,
+        startingBalanceCurrency: currencyCode.value,
+      }),
+      selectedMonth.value,
+      locale.value,
+    )
+    return {
+      totals: monthlyTotals(display, selectedMonth.value),
+      months: display.months,
+      summary: buildProjectionSummary(planRows),
+      milestones: buildProjectionMilestones(planRows),
+    }
+  }
 
   const rows = computed(() =>
     buildProjectionRows(effectiveInputs.value, selectedMonth.value, locale.value),
@@ -71,6 +105,8 @@ export const useEffectiveProjection = () => {
   return {
     displayInputs,
     baseTotals,
+    categoryBreakdown,
+    projectPlan,
     displayGoals,
     effectiveInputs,
     rows,

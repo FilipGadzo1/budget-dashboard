@@ -87,6 +87,13 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `useEffectiveProjection` puts both on the inputs as the system-generated fields `savingsAdjustments` and `savingsStartingBalance`, separate from the user's `monthlyAdjustments`.
 - In `ProjectionTable`, a month with a transfer shows a wallet sub-line under **Net** and a wallet badge in the Month cell; the **Net worth** column appears only when the budget has savings (`showNetWorth`). User one-time adjustments keep the amber badge/delta (`row.expenseAdjustment !== 0`).
 
+**Recurring items and categories** (`src/services/itemsService.ts`):
+- `BudgetItem` is the shared shape of income and expense items (`ExpenseItem` adds `sortOrder`). An item has optional `everyMonths` (1 = monthly, 12 = yearly), `startMonth` / `endMonth` (YYYY-MM, inclusive) and, for expenses, `category`. For non-monthly items `startMonth` is also the anchor month.
+- `buildProjectionRows` sums itemised budgets **month by month** with `amountIn`, so a yearly bill lands in one month and a loan stops when it ends. Never assume income or expenses are constant across rows.
+- `monthlyTotals(inputs, monthKey)` and `expensesByCategory` use the **monthly equivalent** (a yearly bill counts for a twelfth) of items live in that month — that is the "average per month" shown in the config panel, scenario cards and the dashboard category card.
+- `ItemsDialog` (`src/components/projections/`) is the single dialog for both income sources and expense items (`kind` prop). It uses a local `draft`; nothing reaches the store until **Save**.
+- `useEffectiveProjection().projectPlan(inputs)` projects any inputs (e.g. a saved scenario) from the current starting balance and savings; `ScenarioComparison` uses it to compare plans.
+
 **Typecheck** — `npm run typecheck` runs `vue-tsc --noEmit -p tsconfig.app.json`. The root `tsconfig.json` only has project references, so plain `vue-tsc --noEmit` checks nothing.
 
 **ProjectionsView form sync pattern:**
@@ -96,7 +103,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages
 - `src/components/shared/` — reusable UI: `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
 - `src/components/dashboard/` — `TrendChart` (cumulative line + monthly income-vs-expenses bar toggle), `MilestonesCard`
-- `src/components/projections/` — `ProjectionTable`, `ExpensesDialog`
+- `src/components/projections/` — `ProjectionTable`, `ItemsDialog`
 - `src/components/scenarios/` — `ScenarioCard`
 
 **Page layouts:**
@@ -111,7 +118,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **CurrencyInput** (`src/components/shared/CurrencyInput.vue`) wraps PrimeVue `InputNumber` with a currency symbol addon. It enforces `min="0"` but has no upper bound — validation limits are enforced by the Yup schema in `src/validation/forms.ts`, which fires via the `syncProjection()` watcher in `ProjectionsView`.
 
-**ExpensesDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. Closing via Escape or the Cancel button discards unsaved changes. The dialog has a fixed height via `:style` + PrimeVue PassThrough (`:pt`) to make the content area a flex column — do **not** use scoped `:deep()` CSS to target PrimeVue Dialog internals, as Dialog teleports to `<body>` and scoped styles won't reach it.
+**ItemsDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. Closing via Escape or the Cancel button discards unsaved changes. The dialog has a fixed height via `:style` + PrimeVue PassThrough (`:pt`) to make the content area a flex column — do **not** use scoped `:deep()` CSS to target PrimeVue Dialog internals, as Dialog teleports to `<body>` and scoped styles won't reach it.
 
 **Exchange rates** (`useExchangeRates`) — module-level singleton, fetches from jsDelivr CDN with Cloudflare Pages fallback, 1-hour cache TTL. Returns rates relative to EUR; `convert()` cross-multiplies via EUR.
 

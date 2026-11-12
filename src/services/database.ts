@@ -69,7 +69,7 @@ export async function fetchProjectionInputs(userId: string): Promise<ProjectionI
       .single(),
     supabase
       .from('expense_items')
-      .select('id, name, amount, sort_order, currency')
+      .select('id, name, amount, sort_order, currency, every_months, start_month, end_month, category')
       .eq('user_id', userId)
       .order('sort_order', { ascending: true }),
   ])
@@ -104,6 +104,10 @@ export async function syncExpenseItems(userId: string, items: ExpenseItem[]): Pr
         amount: item.amount,
         sort_order: index,
         currency: item.currency ?? null,
+        every_months: item.everyMonths ?? 1,
+        start_month: item.startMonth ?? null,
+        end_month: item.endMonth ?? null,
+        category: item.category ?? null,
       })),
       { onConflict: 'id' },
     )

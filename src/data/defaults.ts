@@ -22,6 +22,22 @@ export const localeOptions = [
   { value: 'hr-HR', label: 'Croatian (Croatia)' },
 ]
 
+// Suggested expense categories. An item's category is free text in the database,
+// so this list can change without a migration.
+export const expenseCategories = [
+  'Housing',
+  'Utilities',
+  'Food',
+  'Transport',
+  'Insurance',
+  'Health',
+  'Debt',
+  'Kids',
+  'Subscriptions',
+  'Entertainment',
+  'Other',
+]
+
 // State used before a user's data has loaded, and after a reset.
 export const defaultProjectionInputs: ProjectionInputs = {
   monthlyIncome: 0,

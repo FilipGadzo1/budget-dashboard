@@ -48,3 +48,6 @@ specs/.current-spec
 # Claude Code
 .claude/
 /specs
+
+# oh-my-claudecode local state
+.omc/

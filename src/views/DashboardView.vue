@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
+import CategoryBreakdown from '@/components/dashboard/CategoryBreakdown.vue'
 import TrendChart from '@/components/dashboard/TrendChart.vue'
 import MilestonesCard from '@/components/dashboard/MilestonesCard.vue'
 import { useCurrency } from '@/composables/useCurrency'
@@ -11,7 +12,7 @@ import { useProjectionStore } from '@/stores/projection'
 const router = useRouter()
 const projectionStore = useProjectionStore()
 const { formatCurrency, formatCompactCurrency } = useCurrency()
-const { rows: projectionRows, summary, milestones, hasSavings } = useEffectiveProjection()
+const { rows: projectionRows, summary, milestones, hasSavings, categoryBreakdown } = useEffectiveProjection()
 
 // Use first row's net so it reflects the actual per-month savings contribution
 const monthlyNet = computed(() => projectionRows.value[0]?.net ?? 0)
@@ -173,6 +174,13 @@ const insights = computed(() => {
           <p class="text-sm font-semibold text-primary">{{ insight.title }}</p>
           <p class="text-body mt-1">{{ insight.body }}</p>
         </article>
+
+        <!-- Spending by category (itemised budgets only) -->
+        <CategoryBreakdown
+          v-if="categoryBreakdown.length"
+          :entries="categoryBreakdown"
+          :format-currency="formatCurrency"
+        />
 
         <!-- Milestones -->
         <MilestonesCard
