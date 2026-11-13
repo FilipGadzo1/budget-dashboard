@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
+import ExchangeRatesPanel from '@/components/shared/ExchangeRatesPanel.vue'
 import { useExchangeRates } from '@/composables/useExchangeRates'
 import { currencyOptions, localeOptions } from '@/data/defaults'
 import { rebaseInputs } from '@/services/currencyService'
@@ -11,7 +12,15 @@ import { useUiStore } from '@/stores/ui'
 const uiStore = useUiStore()
 const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
-const { fetchRates, canConvert, convert } = useExchangeRates()
+const { fetchRates, canConvert, convert, getRatesFor, loading: ratesLoading, error: ratesError, rateDate } = useExchangeRates()
+
+// ── Exchange rates, shown against the saved display currency ─────────────────
+const supportedCurrencyCodes = currencyOptions.map((o) => o.value)
+const currentRates = computed(() => getRatesFor(uiStore.currencyCode, supportedCurrencyCodes))
+const currencyLabel = (code: string): string =>
+  currencyOptions.find((o) => o.value === code)?.label.split(' (')[0] ?? code
+
+onMounted(() => { void fetchRates() })
 
 // ── Local draft state ─────────────────────────────────────────────────────────
 const draftCurrency = ref(uiStore.currencyCode)
@@ -77,14 +86,17 @@ const resetAll = async (): Promise<void> => {
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Settings</h1>
-      <p class="page-description">Manage your display preferences and app configuration.</p>
-    </div>
+  <div class="page settings-page">
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-description">How amounts are shown, and your data.</p>
+      </div>
+    </header>
 
+    <div class="settings-grid scroll-y">
     <!-- Display preferences -->
-    <div class="card mb-6">
+    <div class="card">
       <p class="text-heading mb-4">Display preferences</p>
       <div class="settings-selects-grid grid grid-cols-2 gap-3">
         <div>
@@ -148,6 +160,21 @@ const resetAll = async (): Promise<void> => {
       </div>
     </div>
 
+    <div class="settings-side">
+    <div class="card">
+      <p class="text-heading mb-1">Exchange rates</p>
+      <p class="text-body mb-4">Today's rates against your display currency.</p>
+      <ExchangeRatesPanel
+        :currency-code="uiStore.currencyCode"
+        :rates="currentRates"
+        :rate-date="rateDate"
+        :loading="ratesLoading"
+        :error="ratesError"
+        :currency-label="currencyLabel"
+        layout="list"
+      />
+    </div>
+
     <!-- Data management -->
     <div class="card">
       <p class="text-heading mb-1">Data management</p>
@@ -176,10 +203,35 @@ const resetAll = async (): Promise<void> => {
         </div>
       </div>
     </div>
+    </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* Preferences beside rates and data, so the page uses its width */
+.settings-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.settings-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+@media (max-width: 1099px) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1023px) {
   .settings-selects-grid {
     grid-template-columns: 1fr;
@@ -197,7 +249,7 @@ const resetAll = async (): Promise<void> => {
   }
 
   .text-heading {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     letter-spacing: 0.01em;
   }

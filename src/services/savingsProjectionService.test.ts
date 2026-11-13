@@ -1,6 +1,6 @@
 import type { SavingsGoal } from '@/models'
 
-import { buildSavingsContributionAdjustments, savingsStartingBalance } from './savingsProjectionService'
+import { buildGoalBalances, buildSavingsContributionAdjustments, savingsStartingBalance } from './savingsProjectionService'
 
 const goal = (overrides: Partial<SavingsGoal> = {}): SavingsGoal => ({
   id: 'g1',
@@ -78,5 +78,30 @@ describe('savingsStartingBalance', () => {
         goal({ id: 'c', currentAmount: 5000, status: 'completed' }),
       ]),
     ).toBe(6500)
+  })
+})
+
+describe('buildGoalBalances', () => {
+  it('tracks each goal month by month and stops at the target', () => {
+    const result = buildGoalBalances([goal({ currentAmount: 9200 })], '2026-01', 3)
+    expect(result.g1).toEqual([9700, 10000, 10000])
+  })
+
+  it('keeps a paused goal at what it holds today', () => {
+    const result = buildGoalBalances([goal({ status: 'paused', currentAmount: 300 })], '2026-01', 2)
+    expect(result.g1).toEqual([300, 300])
+  })
+
+  it('stops contributing after the target date', () => {
+    const result = buildGoalBalances([goal({ targetDate: '2026-02-15' })], '2026-01', 4)
+    expect(result.g1).toEqual([500, 1000, 1000, 1000])
+  })
+
+  it('adds up to the same totals as the contribution schedule', () => {
+    const goals = [goal({ currentAmount: 9200 }), goal({ id: 'g2', monthlyContribution: 250, targetAmount: 600 })]
+    const balances = buildGoalBalances(goals, '2026-01', 4)
+    const contributed = buildSavingsContributionAdjustments(goals, '2026-01', 4).reduce((sum, a) => sum + a.expenseAdjustment, 0)
+    const growth = goals.reduce((sum, g) => sum + balances[g.id][3] - g.currentAmount, 0)
+    expect(growth).toBe(contributed)
   })
 })

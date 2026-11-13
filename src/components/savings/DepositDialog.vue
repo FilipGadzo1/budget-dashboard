@@ -288,8 +288,6 @@ const formatDate = (iso: string): string => {
   font-weight: 600;
   color: var(--app-text-secondary);
   margin: 0 0 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .deposit-history-list {

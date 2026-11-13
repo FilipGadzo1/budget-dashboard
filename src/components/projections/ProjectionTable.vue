@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 
+import MoneyFlow from '@/components/shared/MoneyFlow.vue'
 import type { MonthAdjustment, ProjectionRow } from '@/models'
 import { formatShortMonth } from '@/utils/date'
 
@@ -17,13 +18,31 @@ const props = defineProps<{
   readonly?: boolean
   /** Show the net-worth column (only useful when the budget has savings). */
   showNetWorth?: boolean
+  /** Month the app is looking at (YYYY-MM); its row is highlighted. */
+  focusKey?: string | null
 }>()
 
 const emit = defineEmits<{
   'update:adjustments': [adjustments: MonthAdjustment[]]
+  /** A month was clicked: make it the month the app is looking at. */
+  select: [monthKey: string]
 }>()
 
+// Clicking a row looks at that month and, when the plan can be edited, opens
+// its one-time adjustment panel.
+const onRowClick = (monthKey: string): void => {
+  emit('select', monthKey)
+  if (!props.readonly) toggleExpand(monthKey)
+}
+
 const expandedMonthKey = ref<string | null>(null)
+
+// A cell whose figure changes is re-created (it is keyed by its value) and slides
+// in. That is switched on only after the first paint, so opening the page does
+// not animate every cell. Plain CSS on purpose: a rolling-digit component in each
+// of up to 300 cells froze the page for about a second on every edit.
+const live = ref(false)
+onMounted(() => requestAnimationFrame(() => { live.value = true }))
 const draft = ref({ incomeAdjustment: 0, expenseAdjustment: 0, note: '' })
 
 const toggleExpand = (monthKey: string): void => {
@@ -93,7 +112,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 </script>
 
 <template>
-  <div class="ptable-wrap">
+  <div class="ptable-wrap" :class="{ 'ptable-live': live }">
   <div class="ptable-scroll">
     <table class="ptable">
       <thead class="ptable-head">
@@ -116,7 +135,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
             <td :colspan="columnCount" class="ptable-year-cell">
               <span class="ptable-year">{{ group.year }}</span>
               <span class="ptable-year-net" :title="`Net for ${group.year}: ${signed(group.net, formatCurrency(group.net))}`">
-                net {{ signed(group.net, formatCompact(group.net)) }}
+                net <MoneyFlow :value="group.net" compact signed />
               </span>
             </td>
           </tr>
@@ -129,12 +148,13 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
             :class="{
               'ptable-row-interactive': !readonly,
               'ptable-row-open': expandedMonthKey === row.monthKey,
+              'ptable-row-focus': row.monthKey === focusKey,
             }"
             :tabindex="readonly ? undefined : 0"
             :role="readonly ? undefined : 'button'"
             :aria-expanded="readonly ? undefined : expandedMonthKey === row.monthKey"
             :aria-label="readonly ? undefined : `Adjust ${row.monthLabel}`"
-            @click="!readonly && toggleExpand(row.monthKey)"
+            @click="onRowClick(row.monthKey)"
             @keydown.enter.self.prevent="!readonly && toggleExpand(row.monthKey)"
             @keydown.space.self.prevent="!readonly && toggleExpand(row.monthKey)"
           >
@@ -156,7 +176,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
             <!-- Income -->
             <td class="ptable-num-cell">
-              <span class="ptable-num" :title="formatCurrency(row.income)">{{ formatCompact(row.income) }}</span>
+              <span :key="row.income" class="ptable-num ptable-tick" :title="formatCurrency(row.income)">{{ formatCompact(row.income) }}</span>
               <span
                 v-if="row.incomeAdjustment !== 0"
                 class="ptable-delta"
@@ -167,7 +187,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
             <!-- Expenses -->
             <td class="ptable-num-cell">
-              <span class="ptable-num" :title="formatCurrency(row.expenses)">{{ formatCompact(row.expenses) }}</span>
+              <span :key="row.expenses" class="ptable-num ptable-tick" :title="formatCurrency(row.expenses)">{{ formatCompact(row.expenses) }}</span>
               <span
                 v-if="row.expenseAdjustment !== 0"
                 class="ptable-delta"
@@ -179,7 +199,8 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
             <!-- Net -->
             <td class="ptable-num-cell">
               <span
-                class="ptable-net"
+                :key="row.net"
+                class="ptable-net ptable-tick"
                 :class="row.net >= 0 ? 'ptable-net-pos' : 'ptable-net-neg'"
                 :title="formatCurrency(row.net)"
               >{{ signed(row.net, formatCompact(row.net)) }}</span>
@@ -188,7 +209,8 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
             <!-- Cumulative balance -->
             <td class="ptable-num-cell">
               <span
-                class="ptable-num"
+                :key="row.cumulativeBalance"
+                class="ptable-num ptable-tick"
                 :class="row.cumulativeBalance < 0 ? 'ptable-bal-neg' : ''"
                 :title="formatCurrency(row.cumulativeBalance)"
               >{{ formatCompact(row.cumulativeBalance) }}</span>
@@ -203,7 +225,8 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
             <!-- Net worth (cash + savings) -->
             <td v-if="showNetWorth" class="ptable-num-cell">
               <span
-                class="ptable-num"
+                :key="row.netWorth"
+                class="ptable-num ptable-tick"
                 :class="row.netWorth < 0 ? 'ptable-bal-neg' : ''"
                 :title="formatCurrency(row.netWorth)"
               >{{ formatCompact(row.netWorth) }}</span>
@@ -310,9 +333,24 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
 <style scoped>
 /* ─── Scroll wrapper ──────────────────────────────────────────── */
+/* The table scrolls inside its card (the header stays put), not the page */
+.ptable-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .ptable-scroll {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+.ptable-row-focus {
+  background: var(--app-accent-soft);
 }
 
 /* ─── Table base ──────────────────────────────────────────────── */
@@ -343,8 +381,6 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
   padding: 0.5rem 1rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--app-text-secondary);
   white-space: nowrap;
 }
@@ -435,7 +471,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
    (green) nor a loss (red) */
 .ptable-savings-line {
   display: block;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-num);
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   color: var(--chart-2);
@@ -458,7 +494,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
 .ptable-year-net {
   float: right;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
 }
 
@@ -504,7 +540,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
 .ptable-num {
   display: block;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-num);
   font-size: 0.8125rem;
   color: var(--app-text);
   font-variant-numeric: tabular-nums;
@@ -512,7 +548,7 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 
 .ptable-delta {
   display: block;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-num);
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   margin-top: 1px;
@@ -522,7 +558,8 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
 .ptable-delta-neg { color: var(--app-negative); }
 
 .ptable-net {
-  font-family: 'DM Mono', monospace;
+  display: inline-block;
+  font-family: var(--font-num);
   font-size: 0.875rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -638,5 +675,15 @@ const signed = (value: number, text: string): string => (value >= 0 ? '+' : '') 
   .ptable-chevron-cell {
     padding: 5px 0.625rem 5px 0;
   }
+}
+
+/* ─── A changed figure slides in ──────────────────────────────── */
+.ptable-live .ptable-tick {
+  animation: ptableTick 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ptableTick {
+  from { opacity: 0; transform: translateY(0.35em); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { vAutoAnimate } from '@formkit/auto-animate/vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 
@@ -35,6 +36,8 @@ const props = withDefaults(
     toDisplay: (amount: number, from?: string) => number
     /** First month of the projection (YYYY-MM): anchors new non-monthly items. */
     startMonth: string
+    /** Start with a new empty row (opened from an "Add" button). */
+    addOnOpen?: boolean
   }>(),
   { initialMode: 'view' },
 )
@@ -76,16 +79,6 @@ const loadDraft = (): void => {
   expanded.value = new Set(draft.value.filter(hasDetails).map((i) => i.id))
 }
 
-watch(
-  () => props.visible,
-  (isVisible) => {
-    if (isVisible) {
-      mode.value = props.initialMode
-      loadDraft()
-    }
-  },
-)
-
 const fmt = (amount: number, currency: string = props.currency): string =>
   new Intl.NumberFormat(props.locale, { style: 'currency', currency }).format(amount)
 
@@ -107,8 +100,10 @@ const enterEdit = (): void => {
   mode.value = 'edit'
 }
 
+// Opened straight into editing (the Plan page shows the list itself): Save and
+// Cancel close the dialog instead of falling back to the read-only view.
 const cancelEdit = (): void => {
-  if (props.modelValue.length === 0) {
+  if (props.initialMode === 'edit' || props.modelValue.length === 0) {
     close()
     return
   }
@@ -127,7 +122,7 @@ const save = (): void => {
       category: i.category?.trim() || undefined,
     }))
   emit('update:modelValue', items)
-  if (items.length === 0) {
+  if (props.initialMode === 'edit' || items.length === 0) {
     close()
     return
   }
@@ -137,6 +132,21 @@ const save = (): void => {
 const addItem = (): void => {
   draft.value.push({ id: crypto.randomUUID(), name: '', amount: 0, currency: props.currency, everyMonths: 1 })
 }
+
+// Runs for a dialog that is already open when it mounts too (opened from a link
+// such as the command palette): without `immediate` the draft would stay empty
+// and Save would write an empty list over the real items.
+watch(
+  () => props.visible,
+  (isVisible) => {
+    if (isVisible) {
+      mode.value = props.initialMode
+      loadDraft()
+      if (props.addOnOpen && mode.value === 'edit') addItem()
+    }
+  },
+  { immediate: true },
+)
 
 const removeItem = (index: number): void => {
   draft.value.splice(index, 1)
@@ -167,7 +177,7 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
     modal
     dismissable-mask
     :draggable="false"
-    :style="{ width: 'min(94vw, 38rem)', height: 'min(88vh, 38rem)' }"
+    :style="{ width: 'min(94vw, 46rem)', height: 'min(88vh, 42rem)' }"
     :pt="{
       root: { style: 'display: flex; flex-direction: column;' },
       content: { style: 'flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0;' },
@@ -215,7 +225,8 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
         </button>
       </div>
 
-      <div class="items-list items-list-edit">
+      <!-- Rows slide into place when one is added or removed -->
+      <div v-auto-animate="{ duration: 180 }" class="items-list items-list-edit">
         <div v-for="(item, index) in draft" :key="item.id" class="item-row">
           <div class="flex items-center gap-2">
             <InputText
@@ -360,8 +371,8 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
   align-items: center;
   justify-content: space-between;
   border-top: 1px solid var(--app-border);
-  padding-top: 0.75rem;
-  margin-top: 0.75rem;
+  padding: 0.875rem 0;
+  margin-top: 0.5rem;
   flex-shrink: 0;
 }
 
@@ -369,6 +380,7 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  padding-bottom: 0.25rem;
 }
 
 .item-amount {
@@ -385,13 +397,13 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
   color: var(--app-accent);
 }
 
+/* All the schedule fields on one line in the dialog; two per line on a phone */
 .item-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: 0.5rem;
-  padding: 0.625rem;
-  border: 1px solid var(--app-border);
-  border-radius: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.25rem, 1fr));
+  gap: 0.625rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-panel);
   background: var(--app-surface-hover);
 }
 
@@ -403,10 +415,8 @@ const hasInvalidDates = computed(() => draft.value.some(endBeforeStart))
 }
 
 .item-detail-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--app-text-secondary);
 }
 

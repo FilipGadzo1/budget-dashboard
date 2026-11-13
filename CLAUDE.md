@@ -61,7 +61,7 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 
 **Defaults and options** — `src/data/defaults.ts` holds the default inputs/UI state and the currency and locale option lists.
 
-**Preferences have one home each** — currency and locale are edited only in `SettingsView`; start month only in `ProjectionsView`.
+**Preferences have one home each** — currency and locale are edited only in `SettingsView`; the forecast window (start and end month) only in `ForecastView`.
 
 **Multi-currency** (`src/services/currencyService.ts`) — every stored amount keeps the currency it was entered in; nothing is rewritten when rates move.
 - Income/expense items and monthly adjustments have an optional `currency`; `ProjectionInputs.currency` is the base currency (plain `monthlyIncome`/`monthlyExpenses` fields, and the fallback for untagged items). A `SavingsGoal` has a `currency`; its deposits are in it.
@@ -72,6 +72,11 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - Never sum raw item amounts in a view; use `baseTotals` / `monthlyTotals(toDisplayInputs(...))`.
 
 **Save errors** — write functions in `src/services/` call `reportSaveError()` (`src/lib/notify.ts`); `App.vue` shows the result as a toast. Do not swallow write failures with `console.warn`.
+
+**The month being looked at** (`useTimeTravel`, `useEffectiveProjection`):
+- Clicking a month in a `LineChart`, the `MonthStrip` or a `ProjectionTable` row makes it the month the app is looking at (`useTimeTravel().focus(index)`; module singleton, never saved). Overview, Forecast and Savings each have a link back to the end of the plan / today.
+- `focusIdx` / `focusRow` (from `useEffectiveProjection`) are that month — the last month when none is picked; `hasFocus` says whether one is. `goalAmountAt(goal)` is what a goal holds in that month, in the goal's own currency (today's amount when no month is picked), from `buildGoalBalances` in `savingsProjectionService`.
+- There is no time bar and no what-if layer (both were removed): `rows` is always the saved plan.
 
 **Collaboration store** (`src/stores/collaboration.ts`):
 - Manages collaborators, shared budgets, activity log, and the active budget context (whose data is being viewed)
@@ -94,37 +99,48 @@ Vue 3 SPA · Pinia stores · PrimeVue 4 + Tailwind CSS · Yup validation · Supa
 - `ItemsDialog` (`src/components/projections/`) is the single dialog for both income sources and expense items (`kind` prop). It uses a local `draft`; nothing reaches the store until **Save**.
 - `useEffectiveProjection().projectPlan(inputs)` projects any inputs (e.g. a saved scenario) from the current starting balance and savings; `ScenarioComparison` uses it to compare plans.
 
-**Projection window** — the store keeps a start month (`profiles.selected_month`) and a length (`ProjectionInputs.months`, 1–60). The UI shows a start month and an **end month**; `ProjectionsView` derives the end from those and converts edits back to `months` (`addMonthsToKey` / `monthsBetween` in `src/utils/date.ts`). Moving the start keeps the end fixed.
+**Projection window** — the store keeps a start month (`profiles.selected_month`) and a length (`ProjectionInputs.months`, 1–60). The UI shows a start month and an **end month**; `ForecastView` derives the end from those and converts edits back to `months` (`addMonthsToKey` / `monthsBetween` in `src/utils/date.ts`). Moving the start keeps the end fixed.
 
-**Amount display** — tables and lists on Projections and Savings show compact amounts (`formatCompactCurrency` / `formatCompactMoney`, e.g. €5.9K) with the exact figure in a `title` tooltip. Inputs and dialogs always show exact amounts.
+**Amount display** — the forecast table and the Savings list show compact amounts (`formatCompactCurrency` / `formatCompactMoney`, e.g. €5.9K) with the exact figure in a `title` tooltip. Inputs and dialogs always show exact amounts.
 
 **Typecheck** — `npm run typecheck` runs `vue-tsc --noEmit -p tsconfig.app.json`. The root `tsconfig.json` only has project references, so plain `vue-tsc --noEmit` checks nothing.
 
-**ProjectionsView form sync pattern:**
-`ProjectionsView.vue` initialises a local `form` reactive object from the store on setup. A `watch(() => projectionStore.inputs, ...)` keeps the form in sync when the store changes externally (scenario load, realtime update). Without this watch, loading a scenario would not update the visible form fields.
+**PlanView form sync pattern:**
+`PlanView.vue` initialises a local `form` reactive object (the plain monthly income / expenses fields) from the store on setup. A `watch(() => projectionStore.inputs, ...)` keeps the form in sync when the store changes externally (scenario load, realtime update). Without this watch, loading a scenario would not update the visible fields.
 
 **Component structure:**
-- `src/components/app/AppShell.vue` — layout shell (sidebar, mobile top bar + bottom tabs); used as a layout route wrapping all authenticated pages. Settings is **not** in the navigation: it lives in `AccountMenu` (theme switch, Settings, Sign out), which opens upward from the account row in the sidebar footer and downward from the avatar on mobile.
+- `src/components/app/AppShell.vue` — the frame around every signed-in page. Desktop: a **top bar** (Overview, Plan, Forecast, Savings, Scenarios; then Search and the account avatar, which opens `AccountMenu` — Sharing and Settings live only there) and the page. The frame (`.app-frame`) is exactly one screen tall. Phone: a top bar with the page name, the page (which scrolls) and the tab bar. A pending invite shows as a dot on the avatar and a count on Sharing inside the menu.
+- `src/components/app/CommandPalette.vue` — Ctrl/⌘ K (the shell owns the shortcut; `useCommandPalette` holds the open state). Jumps to pages and runs actions. Actions that open a dialog on another page navigate with a query flag (`/plan?edit=income|expense`, `/savings?new=1`) which the page reads once and clears.
 - `src/components/app/AppLogo.vue` — the app mark (forecast line). `public/favicon.svg` is the same drawing; change both together.
-- `src/components/shared/` — reusable UI: `DatePickerField` (the only calendar control — wraps PrimeVue `DatePicker` with a string model, `mode="month"` → `YYYY-MM`, `mode="date"` → `YYYY-MM-DD`; do not use native `<input type="month|date">`), `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
-- `src/components/dashboard/` — `TrendChart` (cash / net-worth lines + monthly income-vs-expenses columns, with axes and a hover/keyboard readout; geometry helpers in `src/services/chartService.ts`), `CategoryBreakdown`, `GettingStarted` (first-run guide), `MilestonesCard`
-- `src/components/projections/` — `ProjectionTable`, `ItemsDialog`
+- `src/components/shared/` — reusable UI: `LineChart` (the app's one line chart: any series over the forecast months, fills its container, hover readout, a marker on the looked-at month; clicking or the arrow keys select a month), `MonthStrip` (one cell per month shaded by net; click selects it), `GoalRing`, `Sparkline`, `MoneyFlow` (an amount whose digits roll when it changes — for totals and short lists; never one per cell of a long table), `DatePickerField` (the only calendar control — wraps PrimeVue `DatePicker` with a string model, `mode="month"` → `YYYY-MM`, `mode="date"` → `YYYY-MM-DD`; do not use native `<input type="month|date">`), `CurrencyInput`, `EmptyState`, `ConfirmDeleteDialog`, `DialogHeader`, `StatusMessage`, `ExchangeRatesPanel`
+- `src/components/dashboard/` — `NextSteps` ("Worth a look": problems, then things to set up, then good news; also reused on Plan with another title; `compact` for short cards), `GoalsSnapshot` (every goal as a ring row; the list scrolls inside the card), `GettingStarted` (first-run guide)
+- `src/components/plan/` — `SankeyFlow` (money-flow diagram: income → each category, savings, what is left), `MonthFlow` (the same split as one bar; `compact` on the Overview), `PlanItemsCard` (income or expenses as a list that scrolls inside its card; opens `ItemsDialog` to edit)
+- `src/components/projections/` — `ProjectionTable` (scrolls inside its card; `focus-key` highlights the looked-at month, `select` fires on a row click), `ItemsDialog`
+- `src/components/savings/` — `SavingsGoalCard` (ring, saved amount as of the looked-at month, one status chip, Deposit and Edit buttons, ⋯ menu for the rest), `SavingsGoalDialog`, `DepositDialog`
 - `src/components/scenarios/` — `ScenarioCard`, `ScenarioComparison`
 
 **Page layouts:**
-- `DashboardView` — header + summary strip + 2-column grid (`1.5fr / 1fr`): TrendChart left, insights + MilestonesCard right. Mobile stacks to 1 column.
-- `ProjectionsView` — header + 2-column grid (`280px / 1fr`), no summary strip: sticky config panel left (starting balance, income, expenses always visible; start month, end month and currency in a collapsed **Settings** section that shows its values on one line), `ProjectionTable` right. Mobile stacks to 1 column.
-- `SavingsView` — summary strip + one card holding a compact list, one `SavingsGoalRow` per goal (name, progress, monthly amount, one status chip, a Deposit button and a ⋯ menu for Edit / Use required amount / Delete).
+- **No page scrolls on a desktop.** Every view is `.page` (a full-height column: `.page-head`, then `.page-body`, a grid that takes the rest; see "Page layout" in `style.css`). Anything long scrolls inside its own card (`.scroll-y`, usually with `.grow`). A short window (≤800px tall) tightens `--gap` / `--card-pad` automatically. On phones pages stack and scroll normally. When adding content, check 1920×970 and 1366×658 with many goals / expenses.
+- `DashboardView` (Overview, `/`) — a cockpit: four headline tiles (cash, left that month, runway, savings), then `LineChart` beside `NextSteps` and `GoalsSnapshot`, then `MonthStrip` beside `MonthFlow`. Every figure is for the looked-at month.
+- `PlanView` (`/plan`) — three columns: `SankeyFlow`; income (`PlanItemsCard`), starting balance and "What moves the result most" (`NextSteps`); expenses (`PlanItemsCard`). A budget that is not itemised shows one amount field in each card. Exchange rates and **Reset plan** are in the header. Lists show the saved plan; totals include an active what-if.
+- `ForecastView` (`/forecast`) — the period pickers (From / to) in the header, `MonthStrip`, then `ProjectionTable` beside a rail: the looked-at month, figures across the plan, and one-time changes. `/projections` redirects to `/plan`.
+- `SavingsView` — a grid of `SavingsGoalCard`s (scrolls when there are many) above a `LineChart` of every goal's balance, beside a rail with the totals and when each goal lands.
+- `ScenariosView` — a `LineChart` of cash under the current plan and each saved scenario above the comparison table, beside a rail: save the current plan, the scenario cards (scrolling), export / import. `SettingsView` — display preferences beside exchange rates and data management. `CollaborationView` (Sharing) — people and shared budgets beside an activity card that scrolls inside itself.
 
 **CSS / styling:**
-- Design tokens are CSS custom properties defined in `src/style.css` (e.g. `--app-bg`, `--app-accent`, `--app-border`). Chart series use `--chart-1` / `--chart-2`, a pair checked for colour-blind separation and contrast in both themes — do not substitute status colours (`--app-positive` / `--app-negative`) for series.
+- Design tokens are CSS custom properties defined in `src/style.css`. The look is **Aurora glass**: `<body>` carries a soft colour glow (`--app-backdrop`) and cards are translucent glass over it (`--card-bg`, `--card-border`, `--card-blur`). `--app-bg` is the flat colour under the glow. `--app-surface` is **solid** and is for anything that must not be see-through: dialogs, menus, inputs, tooltips, sticky table headers. `--hue` (148) drives the accent and the glow.
+- **The interface is neutral; colour belongs to the data.** Primary buttons, the active nav item and the active mobile tab use ink (`--app-ink` / `--app-ink-text`: near-black in light mode, near-white in dark). Green (`--app-accent`, `--app-positive`) is for money gains, the chart and focus rings — not for buttons.
+- Cards: `.card` is glass with a light edge, `--radius-card` 18px, padding `--card-pad`; `.card-col` makes it a column, `.card-head` / `.card-title` its heading. Buttons are pills. `--app-border` is for dividers inside a card. Do not name a class `ring` — it is a Tailwind utility and draws a box.
+- **Icon tiles** (`.tile`, `.tile-sm`, `.tile-neutral`): a small tinted square with an icon; the hue comes from `--h`. `src/data/categories.ts` maps expense categories to an icon and hue (`categoryStyle`). The name beside a tile always carries the meaning. Savings is `--chart-2` (blue) everywhere: goal bars, the forecast table's transfer line, `MonthFlow`.
+- One typeface: Geist, self-hosted through `@fontsource-variable/geist` (imported in `main.ts`). Use `var(--font-sans)` / `var(--font-num)`, never a literal family. Figures are tabular app-wide (set on `:root`). Labels are sentence case — no `text-transform: uppercase`.
+- Motion: `MoneyFlow` for amounts that change, a CSS slide for changed `ProjectionTable` cells (`.ptable-tick`, keyed by value — 300 `MoneyFlow` cells froze the page for about a second per edit), `.bar-grow` for bars, `LineChart`'s one-time draw-in, `v-auto-animate` on lists whose rows are added or removed, and a fade when the route changes (`.page-enter` in `AppShell`). Everything honours `prefers-reduced-motion`; do not add entrance animations to individual cards.
 - Dark mode via `html.app-dark` selector; PrimeVue dark mode selector set to `.app-dark`. `ThemeMode` is `'light' | 'dark' | 'system'`; `'system'` follows the device (`prefers-color-scheme`). Use `uiStore.isDark` to ask which theme is showing — `themeMode === 'dark'` is wrong when the mode is `'system'`.
 - Use Tailwind for layout/spacing; use `.text-primary`, `.text-secondary`, `.divider`, `.border-app`, `.bg-surface` utility classes (defined in `style.css`) instead of inline `style=""` for token-based colors
 - PrimeVue component overrides are in the `/* PrimeVue overrides */` section of `style.css`
 
-**CurrencyInput** (`src/components/shared/CurrencyInput.vue`) wraps PrimeVue `InputNumber` with a currency symbol addon. It enforces `min="0"` but has no upper bound — validation limits are enforced by the Yup schema in `src/validation/forms.ts`, which fires via the `syncProjection()` watcher in `ProjectionsView`.
+**CurrencyInput** (`src/components/shared/CurrencyInput.vue`) wraps PrimeVue `InputNumber` with a currency symbol addon. It enforces `min="0"` but has no upper bound — validation limits are enforced by the Yup schema in `src/validation/forms.ts`, which fires via the `syncPlan()` watcher in `PlanView`.
 
-**ItemsDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. Closing via Escape or the Cancel button discards unsaved changes. The dialog has a fixed height via `:style` + PrimeVue PassThrough (`:pt`) to make the content area a flex column — do **not** use scoped `:deep()` CSS to target PrimeVue Dialog internals, as Dialog teleports to `<body>` and scoped styles won't reach it.
+**ItemsDialog** uses a local `draft` array; items are only committed to the store when the user explicitly clicks **Save**. `PlanView` opens it with `initial-mode="edit"` (Save and Cancel then close it) and `add-on-open` for a new empty row. Its `visible` watcher is `immediate` on purpose: a dialog that mounts already open (deep link) must still load the draft, or Save would write an empty list over the real items. Closing via Escape or the Cancel button discards unsaved changes. The dialog has a fixed height via `:style` + PrimeVue PassThrough (`:pt`) to make the content area a flex column — do **not** use scoped `:deep()` CSS to target PrimeVue Dialog internals, as Dialog teleports to `<body>` and scoped styles won't reach it.
 
 **Exchange rates** (`useExchangeRates`) — module-level singleton, fetches from jsDelivr CDN with Cloudflare Pages fallback, 1-hour cache TTL. Returns rates relative to EUR; `convert()` cross-multiplies via EUR.
 

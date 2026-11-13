@@ -12,6 +12,9 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@formkit/auto-animate": "^0.10.2",
+    "@number-flow/vue": "^0.5.2",
     "@primeuix/themes": "^2.0.3",
     "@supabase/supabase-js": "^2.100.1",
     "pinia": "^3.0.3",
