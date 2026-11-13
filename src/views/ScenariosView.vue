@@ -1,27 +1,46 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 
+import { vAutoAnimate } from '@formkit/auto-animate/vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 
 import ConfirmDeleteDialog from '@/components/shared/ConfirmDeleteDialog.vue'
 import DialogHeader from '@/components/shared/DialogHeader.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
+import LineChart, { type ChartSeries } from '@/components/shared/LineChart.vue'
 import StatusMessage from '@/components/shared/StatusMessage.vue'
 import ScenarioCard from '@/components/scenarios/ScenarioCard.vue'
 import ScenarioComparison, { type ComparisonRow } from '@/components/scenarios/ScenarioComparison.vue'
 import { useCurrency } from '@/composables/useCurrency'
+import { useScenarioLoader } from '@/composables/useScenarioLoader'
+import { useTimeTravel } from '@/composables/useTimeTravel'
 import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
 import type { ProjectionInputs, ProjectionScenario } from '@/models'
-import { rebaseInputs } from '@/services/currencyService'
 import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 
 const projectionStore = useProjectionStore()
 const collabStore = useCollaborationStore()
-const { formatCurrency, currencyCode, convert } = useCurrency()
+const { formatCurrency, formatCompactCurrency, locale } = useCurrency()
+const { loadScenario } = useScenarioLoader()
 
-const { projectPlan } = useEffectiveProjection()
+const { projectPlan, rows, hasFocus, focusIdx } = useEffectiveProjection()
+const { focus } = useTimeTravel()
+
+// The live plan and every saved scenario as lines on one chart, so you can see
+// where the paths split. Each scenario is projected the same way as the live plan.
+const SCENARIO_HUES = [215, 38, 322, 265, 190, 24]
+const compareSeries = computed((): ChartSeries[] => [
+  { key: '__current__', label: 'Current plan', color: 'var(--chart-1)', values: rows.value.map((r) => r.cumulativeBalance), area: true },
+  ...projectionStore.savedScenarios.map((scenario, i) => ({
+    key: scenario.id,
+    label: scenario.name,
+    color: `hsl(${SCENARIO_HUES[i % SCENARIO_HUES.length]} 75% 62%)`,
+    values: projectPlan(scenario.inputs).rows.map((r) => r.cumulativeBalance),
+    dashed: true,
+  })),
+])
 
 const totalsFor = (scenario: ProjectionScenario): { income: number; expenses: number } =>
   projectPlan(scenario.inputs).totals
@@ -66,16 +85,6 @@ const saveScenario = (): void => {
   const scenario = projectionStore.saveScenario(scenarioName.value)
   void collabStore.logActivity('saved_scenario', { name: scenario.name })
   scenarioName.value = ''
-}
-
-const loadScenario = (id: string): void => {
-  projectionStore.loadScenario(id)
-  // A scenario saved while another display currency was active: bring its plain
-  // income/expenses fields into the current one. Itemised amounts keep their own.
-  const loaded = projectionStore.inputs
-  if (loaded.currency && loaded.currency !== currencyCode.value) {
-    projectionStore.setInputs(rebaseInputs(loaded, loaded.currency, currencyCode.value, convert))
-  }
 }
 
 const openRename = (scenario: ProjectionScenario): void => {
@@ -138,75 +147,102 @@ const importFile = async (event: Event): Promise<void> => {
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Scenarios</h1>
-      <p class="page-description">Save, compare, and manage different budget plans.</p>
-    </div>
-
-    <!-- Toolbar -->
-    <div class="card mb-6">
-      <div v-if="collabStore.isReadOnly" class="mb-3 flex items-center gap-2 text-sm" style="color: var(--app-warning)">
-        <i class="pi pi-eye text-xs" />
-        <span>You have view-only access. Load and export scenarios, but cannot save or modify.</span>
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">Scenarios</h1>
+        <p class="page-description">Save a plan, change things, and see where the paths split.</p>
       </div>
-      <div class="scenarios-toolbar flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div class="scenarios-toolbar-name flex-1">
-          <label class="form-label" for="scenario-name">Scenario name</label>
-          <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" :disabled="collabStore.isReadOnly" />
-        </div>
-        <div class="scenarios-toolbar-actions flex gap-2 sm:flex-shrink-0">
-          <button class="btn btn-primary flex-1 sm:flex-none" :disabled="collabStore.isReadOnly" @click="saveScenario">
-            <i class="pi pi-save text-sm" /> Save current
-          </button>
-          <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary flex-1 sm:flex-none" :disabled="collabStore.isReadOnly" @click="overwriteActive">
-            Overwrite active
-          </button>
-        </div>
-      </div>
-    </div>
+    </header>
 
-    <!-- Import/Export bar -->
-    <div class="scenarios-import-export mb-6 flex flex-wrap items-center gap-3">
-      <button class="btn btn-secondary btn-sm" @click="exportFile">
-        <i class="pi pi-upload text-xs" /> Export all
-      </button>
-      <label class="btn btn-secondary btn-sm import-label" :class="{ 'btn-disabled': collabStore.isReadOnly }">
-        <i class="pi pi-download text-xs" /> Import
-        <input class="import-input" type="file" accept="application/json" :disabled="collabStore.isReadOnly" @change="importFile" />
-      </label>
-      <StatusMessage :message="importState.message" :tone="importState.tone" />
-    </div>
-
-    <!-- Empty state -->
-    <EmptyState
-      v-if="!projectionStore.savedScenarios.length"
-      title="No saved scenarios yet"
-      description="Save your current budget inputs as a scenario to start comparing different plans side by side."
-      icon="pi pi-bookmark"
-      :action-label="collabStore.isReadOnly ? '' : 'Save baseline'"
-      @action="projectionStore.saveScenario('Baseline plan')"
-    />
-
-    <!-- Comparison + scenario list -->
-    <template v-else>
-      <ScenarioComparison class="mb-6" :rows="comparisonRows" :format-currency="formatCurrency" />
-
-      <div class="grid gap-3 lg:grid-cols-2">
-        <ScenarioCard
-          v-for="scenario in projectionStore.savedScenarios"
-          :key="scenario.id"
-          :scenario="scenario"
-          :totals="totalsFor(scenario)"
-          :is-active="scenario.id === projectionStore.activeScenarioId"
-          :format-currency="formatCurrency"
-          :readonly="collabStore.isReadOnly"
-          @load="loadScenario(scenario.id)"
-          @rename="openRename(scenario)"
-          @delete="openDelete(scenario.id)"
+    <div class="page-body with-rail">
+      <div class="stack">
+        <!-- Empty state -->
+        <EmptyState
+          v-if="!projectionStore.savedScenarios.length"
+          class="grow"
+          title="No saved scenarios yet"
+          description="Save your current plan as a scenario, then change things and compare the two side by side."
+          icon="pi pi-bookmark"
+          :action-label="collabStore.isReadOnly ? '' : 'Save baseline'"
+          @action="projectionStore.saveScenario('Baseline plan')"
         />
+
+        <!-- The paths on one chart, then the figures -->
+        <template v-else>
+          <section class="card card-col grow chart-box" aria-labelledby="scn-chart-title">
+            <h2 id="scn-chart-title" class="card-title">Cash under each plan</h2>
+            <LineChart
+              :month-keys="rows.map((r) => r.monthKey)"
+              :month-labels="rows.map((r) => r.monthLabel)"
+              :series="compareSeries"
+              :format-currency="formatCurrency"
+              :format-compact="formatCompactCurrency"
+              :locale="locale"
+              :focus-index="hasFocus ? focusIdx : null"
+              label="Cash under the current plan and each saved scenario"
+              @select="focus"
+            />
+          </section>
+
+          <ScenarioComparison class="scn-table scroll-y" :rows="comparisonRows" />
+        </template>
       </div>
-    </template>
+
+      <!-- Rail: save the current plan, the saved scenarios, moving them in and out -->
+      <aside class="stack">
+        <section class="card card-col scn-card" aria-labelledby="scn-save-title">
+          <h2 id="scn-save-title" class="card-title">Save the current plan</h2>
+          <p v-if="collabStore.isReadOnly" class="scn-note scn-note-warning">
+            <i class="pi pi-eye text-xs" aria-hidden="true" />
+            View only: you can load and export scenarios, not save or change them.
+          </p>
+          <div>
+            <label class="form-label" for="scenario-name">Scenario name</label>
+            <InputText id="scenario-name" v-model="scenarioName" placeholder="e.g. Conservative plan" class="w-full" :disabled="collabStore.isReadOnly" />
+          </div>
+          <div class="scn-actions">
+            <button class="btn btn-primary" :disabled="collabStore.isReadOnly" @click="saveScenario">
+              <i class="pi pi-save text-sm" aria-hidden="true" /> Save current
+            </button>
+            <button v-if="projectionStore.activeScenarioId" class="btn btn-secondary" :disabled="collabStore.isReadOnly" @click="overwriteActive">
+              Overwrite active
+            </button>
+          </div>
+        </section>
+
+        <!-- Saved scenarios: the list scrolls inside this space -->
+        <div v-if="projectionStore.savedScenarios.length" v-auto-animate="{ duration: 200 }" class="scn-cards scroll-y grow">
+          <ScenarioCard
+            v-for="scenario in projectionStore.savedScenarios"
+            :key="scenario.id"
+            :scenario="scenario"
+            :totals="totalsFor(scenario)"
+            :is-active="scenario.id === projectionStore.activeScenarioId"
+            :format-currency="formatCurrency"
+            :readonly="collabStore.isReadOnly"
+            @load="loadScenario(scenario.id)"
+            @rename="openRename(scenario)"
+            @delete="openDelete(scenario.id)"
+          />
+        </div>
+        <div v-else class="grow" />
+
+        <section class="card card-col scn-card" aria-labelledby="scn-file-title">
+          <h2 id="scn-file-title" class="card-title">Back up or move</h2>
+          <div class="scn-actions">
+            <button class="btn btn-secondary btn-sm" @click="exportFile">
+              <i class="pi pi-upload text-xs" aria-hidden="true" /> Export all
+            </button>
+            <label class="btn btn-secondary btn-sm import-label" :class="{ 'btn-disabled': collabStore.isReadOnly }">
+              <i class="pi pi-download text-xs" aria-hidden="true" /> Import
+              <input class="import-input" type="file" accept="application/json" :disabled="collabStore.isReadOnly" @change="importFile" />
+            </label>
+          </div>
+          <StatusMessage :message="importState.message" :tone="importState.tone" />
+        </section>
+      </aside>
+    </div>
 
     <!-- Rename dialog -->
     <Dialog v-model:visible="showRenameDialog" modal dismissable-mask :draggable="false" :style="{ width: 'min(92vw, 26rem)' }">
@@ -237,31 +273,43 @@ const importFile = async (event: Event): Promise<void> => {
 </template>
 
 <style scoped>
+/* The figures table keeps to a share of the height and scrolls if it is long */
+.scn-table {
+  flex: 0 1 auto;
+  max-height: 42%;
+}
+
+.scn-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-right: 0.25rem;
+}
+
+.scn-card {
+  flex: none;
+}
+
+.scn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.scn-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--app-text-secondary);
+}
+
+.scn-note-warning {
+  color: var(--app-warning);
+}
+
 @media (max-width: 1023px) {
-  .scenarios-toolbar {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .scenarios-toolbar-name {
-    width: 100%;
-  }
-
-  .scenarios-toolbar-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    width: 100%;
-  }
-
-  .scenarios-toolbar-actions .btn {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .scenarios-import-export {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  .scn-table {
+    max-height: none;
   }
 }
 </style>

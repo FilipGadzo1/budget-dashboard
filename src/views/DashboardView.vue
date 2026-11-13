@@ -1,73 +1,91 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import CategoryBreakdown from '@/components/dashboard/CategoryBreakdown.vue'
 import GettingStarted, { type SetupStep } from '@/components/dashboard/GettingStarted.vue'
-import TrendChart from '@/components/dashboard/TrendChart.vue'
-import MilestonesCard from '@/components/dashboard/MilestonesCard.vue'
+import GoalsSnapshot from '@/components/dashboard/GoalsSnapshot.vue'
+import NextSteps, { type NextStep } from '@/components/dashboard/NextSteps.vue'
+import MonthFlow from '@/components/plan/MonthFlow.vue'
+import LineChart, { type ChartSeries } from '@/components/shared/LineChart.vue'
+import MoneyFlow from '@/components/shared/MoneyFlow.vue'
+import MonthStrip from '@/components/shared/MonthStrip.vue'
+import Sparkline from '@/components/shared/Sparkline.vue'
+import { useAuth } from '@/composables/useAuth'
 import { useCurrency } from '@/composables/useCurrency'
 import { useEffectiveProjection } from '@/composables/useEffectiveProjection'
+import { useTimeTravel } from '@/composables/useTimeTravel'
+import { computeIsOnTrack, computeRequiredMonthly } from '@/services/savingsService'
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
+
+// Overview: the whole plan on one screen. Four headline tiles, the forecast
+// beside what needs attention and the savings goals, and a strip of months with
+// the monthly split along the bottom. Everything follows the month picked by
+// clicking the chart or the month strip (the end of the plan when none is).
 
 const router = useRouter()
 const projectionStore = useProjectionStore()
 const savingsStore = useSavingsStore()
-const { formatCurrency, formatCompactCurrency, locale } = useCurrency()
-const { rows: projectionRows, summary, milestones, hasSavings, categoryBreakdown, baseTotals } = useEffectiveProjection()
+const collabStore = useCollaborationStore()
+const { user } = useAuth()
+const { formatCurrency, formatCompactCurrency, formatMoney, locale } = useCurrency()
+const {
+  rows, summary, milestones, hasSavings, baseTotals,
+  hasFocus, focusIdx, focusRow,
+} = useEffectiveProjection()
+const { focus } = useTimeTravel()
 
-// Use first row's net so it reflects the actual per-month savings contribution
-const monthlyNet = computed(() => projectionRows.value[0]?.net ?? 0)
-const breakEvenGap = computed(() => Math.max(-monthlyNet.value, 0))
-// Net minus what moves into savings: how the cash balance actually changes
-const monthlyCashChange = computed(() => projectionRows.value[0]?.cashChange ?? 0)
+// A short desktop window (a 768px laptop): show one "worth a look" item, not two,
+// so the goals keep their space. The matching CSS trims the tiles and the strip.
+const SHORT_SCREEN = '(min-width: 1024px) and (max-height: 800px)'
+const shortScreen = ref(false)
+let shortQuery: MediaQueryList | undefined
+const onShortChange = (event: MediaQueryListEvent): void => { shortScreen.value = event.matches }
+onMounted(() => {
+  if (typeof window.matchMedia !== 'function') return
+  shortQuery = window.matchMedia(SHORT_SCREEN)
+  shortScreen.value = shortQuery.matches
+  shortQuery.addEventListener('change', onShortChange)
+})
+onBeforeUnmount(() => shortQuery?.removeEventListener('change', onShortChange))
+
+// ── Greeting ────────────────────────────────────────────────────────────────
+// On your own budget the page greets you; on a shared one it says whose it is.
+const greeting = computed(() => {
+  const context = collabStore.activeBudgetContext
+  if (context) return `${context.ownerName || context.ownerEmail}'s budget`
+  const hour = new Date().getHours()
+  const part = hour < 5 ? 'Good evening' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const first = (user.value?.user_metadata?.full_name as string | undefined)?.trim().split(/\s+/)[0]
+  return first ? `${part}, ${first}` : part
+})
+
+const when = computed(() => {
+  const row = focusRow.value
+  if (!row) return 'No plan yet'
+  return `${hasFocus.value ? 'As of' : 'End of plan,'} ${row.monthLabel} · ${rows.value.length} months`
+})
+
+// ── Headline tiles (all for the month being looked at) ──────────────────────
+const cash = computed(() => focusRow.value?.cumulativeBalance ?? 0)
+const cashChange = computed(() => focusRow.value?.cashChange ?? 0)
+const savings = computed(() => focusRow.value?.savingsBalance ?? 0)
+// Months of typical spending the cash would cover
+const runway = computed(() => (baseTotals.value.expenses > 0 ? Math.max(0, cash.value) / baseTotals.value.expenses : null))
+
+// Typical month: the first month's figures, as elsewhere in the app
+const monthlyNet = computed(() => rows.value[0]?.net ?? 0)
+const monthlyCashChange = computed(() => rows.value[0]?.cashChange ?? 0)
+const monthlyToSavings = computed(() => rows.value[0]?.savingsContribution ?? 0)
 
 const noData = computed(() => summary.value.totalIncome === 0 && summary.value.totalExpenses === 0)
 
 // "Strong" = the plan ends with at least three months of expenses in reserve.
-// Relative to the user's own spending, so it means the same in any currency.
 const hasStrongReserve = computed(() => {
-  const avgMonthlyExpenses = summary.value.totalExpenses / Math.max(1, projectionRows.value.length)
+  const avgMonthlyExpenses = summary.value.totalExpenses / Math.max(1, rows.value.length)
   return avgMonthlyExpenses > 0 && summary.value.endingBalance >= avgMonthlyExpenses * 3
 })
-
-// First-run guide: stays until the plan has both income and expenses.
-const setupSteps = computed((): SetupStep[] => [
-  {
-    key: 'balance',
-    title: 'Enter your starting balance',
-    description: 'The cash you have today.',
-    to: '/projections',
-    done: (projectionStore.inputs.startingBalance ?? 0) !== 0,
-    optional: true,
-  },
-  {
-    key: 'income',
-    title: 'Add your income',
-    description: 'One number, or each source separately.',
-    to: '/projections',
-    done: baseTotals.value.income > 0,
-  },
-  {
-    key: 'expenses',
-    title: 'Add your expenses',
-    description: 'Monthly bills, plus yearly ones if you like.',
-    to: '/projections',
-    done: baseTotals.value.expenses > 0,
-  },
-  {
-    key: 'goal',
-    title: 'Create a savings goal',
-    description: 'See when you will reach it.',
-    to: '/savings',
-    done: savingsStore.goals.length > 0,
-    optional: true,
-  },
-])
-const showSetup = computed(
-  () => projectionStore.isReady && !(baseTotals.value.income > 0 && baseTotals.value.expenses > 0),
-)
 
 const statusPill = computed(() => {
   if (noData.value) return { label: 'No data', tone: '' }
@@ -76,343 +94,338 @@ const statusPill = computed(() => {
   return { label: 'On track', tone: 'status-pill-positive' }
 })
 
-const insights = computed(() => {
-  const list: Array<{ title: string; body: string; tone: 'positive' | 'warning' }> = []
-  if (noData.value) {
-    // Nothing to say yet — the getting-started card covers it
-  } else if (monthlyNet.value < 0) {
-    list.push({
-      title: 'Monthly deficit',
-      body: `Expenses exceed income by ${formatCurrency(breakEvenGap.value)} per month. Consider reducing costs or increasing revenue.`,
-      tone: 'warning',
-    })
-  } else {
-    list.push({
-      title: 'Cash-flow positive',
-      body: 'Your income covers expenses each month, building a reserve over time.',
-      tone: 'positive',
-    })
+// ── Chart ───────────────────────────────────────────────────────────────────
+const series = computed((): ChartSeries[] => [
+  { key: 'cash', label: 'Cash', color: 'var(--chart-1)', values: rows.value.map((r) => r.cumulativeBalance), area: true },
+  ...(hasSavings.value
+    ? [{ key: 'worth', label: 'Net worth', color: 'var(--chart-2)', values: rows.value.map((r) => r.netWorth), dashed: true }]
+    : []),
+])
+
+// ── First-run guide: stays until the plan has both income and expenses ──────
+const setupSteps = computed((): SetupStep[] => [
+  { key: 'balance', title: 'Enter your starting balance', description: 'The cash you have today.', to: '/plan', done: (projectionStore.inputs.startingBalance ?? 0) !== 0, optional: true },
+  { key: 'income', title: 'Add your income', description: 'One number, or each source separately.', to: '/plan', done: baseTotals.value.income > 0 },
+  { key: 'expenses', title: 'Add your expenses', description: 'Monthly bills, plus yearly ones if you like.', to: '/plan', done: baseTotals.value.expenses > 0 },
+  { key: 'goal', title: 'Create a savings goal', description: 'See when you will reach it.', to: '/savings', done: savingsStore.goals.length > 0, optional: true },
+])
+const showSetup = computed(
+  () => projectionStore.isReady && !(baseTotals.value.income > 0 && baseTotals.value.expenses > 0),
+)
+
+// ── Worth a look: problems first, then things to set up, then the good news ─
+const steps = computed((): NextStep[] => {
+  if (noData.value) return []
+  const list: NextStep[] = []
+
+  if (monthlyNet.value < 0) {
+    list.push({ key: 'deficit', tone: 'warning', icon: 'pi pi-exclamation-triangle', title: 'You spend more than you earn', body: `Expenses are ${formatCurrency(-monthlyNet.value)} a month above income.`, to: '/plan', action: 'Review the plan' })
+  }
+  if (milestones.value.firstNegativeMonthLabel) {
+    list.push({ key: 'negative', tone: 'warning', icon: 'pi pi-arrow-down-right', title: `Cash runs out in ${milestones.value.firstNegativeMonthLabel}`, body: 'That is the first month the balance goes below zero.', to: '/forecast', action: 'See the month' })
   }
   if (monthlyNet.value >= 0 && monthlyCashChange.value < 0) {
-    list.push({
-      title: 'Saving more than you have spare',
-      body: `Your savings contributions are ${formatCurrency(-monthlyCashChange.value)} more than your monthly surplus, so your cash balance falls each month even though your net worth grows.`,
-      tone: 'warning',
-    })
+    list.push({ key: 'oversaving', tone: 'warning', icon: 'pi pi-wallet', title: 'Saving more than you have spare', body: `Savings take ${formatCurrency(-monthlyCashChange.value)} a month more than your surplus.`, to: '/savings', action: 'Adjust the goals' })
   }
-  if (hasStrongReserve.value) {
-    list.push({
-      title: 'Strong ending balance',
-      body: 'The plan ends with more than three months of expenses in reserve.',
-      tone: 'positive',
-    })
+  const behind = savingsStore.sortedGoals.find((goal) => goal.status === 'active' && computeIsOnTrack(goal) === false)
+  if (behind) {
+    const required = computeRequiredMonthly(behind)
+    list.push({ key: 'behind', tone: 'warning', icon: 'pi pi-flag', title: `${behind.name} is behind`, body: required !== null ? `It needs ${formatMoney(required, behind.currency)} a month to reach its target date.` : 'At this rate it misses its target date.', to: '/savings', action: 'Open savings' })
+  }
+  if (!projectionStore.savedScenarios.length && !collabStore.isReadOnly) {
+    list.push({ key: 'scenario', tone: 'neutral', icon: 'pi pi-bookmark', title: 'Keep a copy of this plan', body: 'Save it as a scenario, then change things and compare the two.', to: '/scenarios', action: 'Save a scenario' })
+  }
+  if (monthlyNet.value >= 0) {
+    list.push({ key: 'positive', tone: 'positive', icon: 'pi pi-check', title: hasStrongReserve.value ? 'A strong reserve at the end' : 'Income covers your spending', body: hasStrongReserve.value ? 'The plan ends with more than three months of expenses in cash.' : 'Every month ends with something left over.' })
   }
   return list
 })
 </script>
 
 <template>
-  <div class="dash-page">
+  <div class="page">
 
     <!-- ── Header ────────────────────────────────────────────────── -->
-    <div class="dash-header">
+    <header class="page-head">
       <div>
         <div class="dash-title-row">
-          <h1 class="page-title">Dashboard</h1>
+          <h1 class="page-title">{{ greeting }}</h1>
           <span class="status-pill" :class="statusPill.tone">
             <span class="status-pill-dot" />
             {{ statusPill.label }}
           </span>
         </div>
-        <p class="dash-subtitle">
-          {{ projectionStore.inputs.months }}-month projection · {{ projectionRows[0]?.monthLabel ?? 'N/A' }} → {{ projectionRows.at(-1)?.monthLabel ?? 'N/A' }}
+        <p class="page-description">
+          {{ when }}
+          <button v-if="hasFocus" class="focus-clear" @click="focus(null)">Back to the end of the plan</button>
         </p>
       </div>
-      <div class="dash-header-actions">
-        <button class="btn btn-primary btn-sm" @click="router.push('/projections')">
-          <i class="pi pi-calculator text-sm" /> Edit plan
+      <div class="page-actions">
+        <button class="btn btn-secondary" @click="router.push('/forecast')">
+          <i class="pi pi-chart-line text-sm" aria-hidden="true" /> Month by month
         </button>
-        <button class="btn btn-secondary btn-sm" @click="router.push('/scenarios')">
-          <i class="pi pi-bookmark text-sm" /> Scenarios
+        <button class="btn btn-primary" @click="router.push('/plan')">
+          <i class="pi pi-sliders-h text-sm" aria-hidden="true" /> Edit plan
         </button>
       </div>
-    </div>
+    </header>
 
     <!-- ── First-run guide ────────────────────────────────────────── -->
     <GettingStarted v-if="showSetup" :steps="setupSteps" />
 
-    <!-- ── Mobile hero ────────────────────────────────────────────── -->
-    <div class="mobile-hero">
-      <div class="mobile-hero-label">Net this month</div>
-      <div class="mobile-hero-amount" :class="{ 'mobile-hero-amount--negative': monthlyNet < 0 }">
-        {{ formatCurrency(monthlyNet) }}
-      </div>
-    </div>
+    <template v-if="!noData">
+      <!-- ── Headline tiles ───────────────────────────────────────── -->
+      <div class="cockpit-tiles">
+        <section class="card tile-card">
+          <p class="tile-label">Cash</p>
+          <p class="tile-value" :class="{ 'text-negative': cash < 0 }"><MoneyFlow :value="cash" /></p>
+          <Sparkline :values="rows.map((r) => r.cumulativeBalance)" />
+        </section>
 
-    <!-- ── Summary strip ─────────────────────────────────────────── -->
-    <div class="card card-sm dash-summary">
-      <div class="dash-summary-items">
-        <div class="dash-summary-item dash-summary-item-desktop">
-          <span class="dash-summary-label">Monthly Net</span>
-          <span class="dash-summary-value" :class="monthlyNet >= 0 ? 'text-positive' : 'text-negative'">
-            {{ formatCurrency(monthlyNet) }}/mo
-          </span>
+        <section class="card tile-card">
+          <p class="tile-label">Left that month</p>
+          <p class="tile-value" :class="{ 'text-negative': cashChange < 0 }"><MoneyFlow :value="cashChange" signed /></p>
+          <p class="tile-note">
+            {{ formatCompactCurrency(focusRow?.income ?? 0) }} in, {{ formatCompactCurrency(focusRow?.expenses ?? 0) }} out<template v-if="focusRow?.savingsContribution">, {{ formatCompactCurrency(focusRow.savingsContribution) }} saved</template>
+          </p>
+        </section>
+
+        <section class="card tile-card">
+          <p class="tile-label">Runway</p>
+          <p class="tile-value">
+            {{ runway === null ? '—' : runway.toFixed(1) }}<span class="tile-unit"> months</span>
+          </p>
+          <div class="tile-bar" aria-hidden="true"><i :style="{ width: `${Math.min(100, ((runway ?? 0) / 12) * 100)}%` }" /></div>
+          <p class="tile-note">of spending covered by cash</p>
+        </section>
+
+        <section class="card tile-card">
+          <template v-if="hasSavings">
+            <p class="tile-label">Savings</p>
+            <p class="tile-value"><MoneyFlow :value="savings" /></p>
+            <Sparkline :values="rows.map((r) => r.savingsBalance)" color="var(--chart-2)" />
+          </template>
+          <template v-else>
+            <p class="tile-label">Spending a month</p>
+            <p class="tile-value"><MoneyFlow :value="baseTotals.expenses" /></p>
+            <p class="tile-note">{{ formatCompactCurrency(baseTotals.income) }} comes in</p>
+          </template>
+        </section>
+      </div>
+
+      <!-- ── Forecast beside what needs attention and the goals ────── -->
+      <div class="cockpit-mid">
+        <section class="card card-col chart-box">
+          <LineChart
+            :month-keys="rows.map((r) => r.monthKey)"
+            :month-labels="rows.map((r) => r.monthLabel)"
+            :series="series"
+            :format-currency="formatCurrency"
+            :format-compact="formatCompactCurrency"
+            :locale="locale"
+            :focus-index="hasFocus ? focusIdx : null"
+            label="Cash over the plan"
+            @select="focus"
+          />
+        </section>
+
+        <div class="cockpit-side">
+          <NextSteps v-if="steps.length" compact :steps="steps.slice(0, shortScreen ? 1 : 2)" />
+          <GoalsSnapshot />
         </div>
-        <div class="dash-summary-sep dash-summary-sep-desktop" />
-        <div class="dash-summary-item">
-          <span class="dash-summary-label">Total Income</span>
-          <span class="dash-summary-value text-positive">{{ formatCompactCurrency(summary.totalIncome) }}</span>
-        </div>
-        <div class="dash-summary-sep" />
-        <div class="dash-summary-item">
-          <span class="dash-summary-label">Total Expenses</span>
-          <span class="dash-summary-value">{{ formatCompactCurrency(summary.totalExpenses) }}</span>
-        </div>
-        <div class="dash-summary-sep" />
-        <div class="dash-summary-item">
-          <span class="dash-summary-label">Ending Cash</span>
-          <span class="dash-summary-value" :class="summary.endingBalance >= 0 ? 'text-positive' : 'text-negative'">
-            {{ formatCompactCurrency(summary.endingBalance) }}
-          </span>
-        </div>
-        <template v-if="hasSavings">
-          <div class="dash-summary-sep" />
-          <div class="dash-summary-item">
-            <span class="dash-summary-label">Net Worth</span>
-            <span
-              class="dash-summary-value"
-              :class="summary.endingNetWorth >= 0 ? 'text-positive' : 'text-negative'"
-              title="Ending cash plus savings"
-            >
-              {{ formatCompactCurrency(summary.endingNetWorth) }}
-            </span>
+      </div>
+
+      <!-- ── Every month, and how a typical one splits ─────────────── -->
+      <div class="cockpit-bot">
+        <section class="card card-col">
+          <div class="card-head">
+            <h2 class="card-title">Every month</h2>
+            <span class="strip-hint">darker means more left over</span>
           </div>
-        </template>
-      </div>
-    </div>
+          <MonthStrip :rows="rows" :focus-index="focusIdx" :locale="locale" :format-currency="formatCurrency" @select="focus" />
+        </section>
 
-    <!-- ── Chart + right column ───────────────────────────────────── -->
-    <div class="dash-main-grid">
-
-      <TrendChart
-        :rows="projectionRows"
-        :peak-balance="milestones.highestBalance"
-        :ending-balance="summary.endingBalance"
-        :format-currency="formatCurrency"
-        :format-compact-currency="formatCompactCurrency"
-        :locale="locale"
-        :show-net-worth="hasSavings"
-      />
-
-      <div class="dash-right-col">
-
-        <!-- Insights -->
-        <article
-          v-for="insight in insights"
-          :key="insight.title"
-          class="insight-card"
-          :class="insight.tone === 'warning' ? 'insight-warning' : 'insight-positive'"
-        >
-          <p class="text-sm font-semibold text-primary">{{ insight.title }}</p>
-          <p class="text-body mt-1">{{ insight.body }}</p>
-        </article>
-
-        <!-- Spending by category (itemised budgets only) -->
-        <CategoryBreakdown
-          v-if="categoryBreakdown.length"
-          :entries="categoryBreakdown"
+        <MonthFlow
+          compact
+          :income="baseTotals.income"
+          :expenses="baseTotals.expenses"
+          :to-savings="monthlyToSavings"
           :format-currency="formatCurrency"
         />
-
-        <!-- Milestones -->
-        <MilestonesCard
-          :first-negative-month-label="milestones.firstNegativeMonthLabel"
-          :highest-balance-month-label="milestones.highestBalanceMonthLabel"
-          :saved-scenarios-count="projectionStore.savedScenarios.length"
-        />
-
       </div>
-    </div>
+    </template>
 
   </div>
 </template>
 
 <style scoped>
-.dash-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* ─── Header ──────────────────────────────────────────────────── */
-.dash-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
 .dash-title-row {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
-.dash-subtitle {
-  font-size: 0.8125rem;
-  color: var(--app-text-secondary);
-  margin: 0.2rem 0 0;
+/* ─── Tiles ───────────────────────────────────────────────────── */
+.cockpit-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  flex: none;
 }
 
-.dash-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-  padding-top: 0.25rem;
-}
-
-/* ─── Summary strip ───────────────────────────────────────────── */
-.dash-summary-items {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex-wrap: wrap;
-}
-
-.dash-summary-item {
+.tile-card {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.25rem 1.5rem 0.25rem 0;
-  flex: 1;
-  min-width: 110px;
+  gap: 0.125rem;
+  padding-block: calc(var(--card-pad) * 0.75);
 }
 
-.dash-summary-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.tile-card :deep(.spark) {
+  height: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+.tile-label {
+  margin: 0;
+  font-size: 0.8125rem;
   color: var(--app-text-secondary);
+}
+
+.tile-value {
+  margin: 0;
+  font-size: clamp(1.5rem, 1.1rem + 0.9vw, 2.125rem);
+  font-weight: 620;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  color: var(--app-text);
   white-space: nowrap;
 }
 
-.dash-summary-value {
-  font-size: 1.125rem;
-  font-weight: 400;
+.tile-unit {
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--app-text-secondary);
+}
+
+.tile-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+}
+
+.tile-bar {
+  height: 6px;
+  margin: 0.25rem 0;
+  border-radius: 3px;
+  background: var(--app-surface-hover);
+  overflow: hidden;
+}
+
+.tile-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--app-accent);
+  transition: width 0.3s var(--ease-out);
+}
+
+/* Leaves the month picked in a chart or the strip */
+.focus-clear {
+  margin-left: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 550;
   color: var(--app-text);
-  font-family: 'DM Mono', monospace;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
-.dash-summary-sep {
-  width: 1px;
-  height: 2.5rem;
-  background: var(--app-border);
-  margin: 0 1.5rem 0 0;
-  flex-shrink: 0;
-}
-
-/* ─── Main grid ───────────────────────────────────────────────── */
-.dash-main-grid {
+/* ─── Middle and bottom rows ──────────────────────────────────── */
+.cockpit-mid {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--gap);
 }
 
-.dash-right-col {
+.cockpit-side {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--gap);
+  min-height: 0;
+  /* Whatever happens, the column never spills onto the row below */
+  overflow: hidden;
 }
 
-/* ─── Mobile hero ─────────────────────────────────────────────── */
-.mobile-hero {
-  display: none;
+/* The goals card takes what is left and scrolls inside */
+.cockpit-side > :last-child {
+  flex: 1;
+  min-height: 0;
 }
 
-/* ─── Mobile (≤ 1023px) ───────────────────────────────────────── */
+.cockpit-side > :first-child:not(:last-child) {
+  flex: none;
+}
+
+.cockpit-bot {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--gap);
+  flex: none;
+}
+
+.cockpit-bot > .card {
+  padding-block: calc(var(--card-pad) * 0.75);
+}
+
+.strip-hint {
+  font-size: 0.75rem;
+  color: var(--app-text-tertiary);
+}
+
+/* ─── Short desktop window: keep the essentials, drop the extras ─ */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .tile-card :deep(.spark),
+  .tile-note,
+  .tile-bar,
+  .strip-hint {
+    display: none;
+  }
+
+  .tile-value {
+    font-size: 1.5rem;
+  }
+
+  .cockpit-bot :deep(.flow-legend) {
+    display: none;
+  }
+
+  /* One line per item, so the goals below keep some room */
+  .cockpit-side :deep(.step-body) {
+    display: none;
+  }
+}
+
+/* ─── Phone ───────────────────────────────────────────────────── */
 @media (max-width: 1023px) {
-  .mobile-hero {
+  .cockpit-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cockpit-mid,
+  .cockpit-bot {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    padding: 1.25rem 1.5rem;
-    border-radius: 16px;
-    background: var(--mobile-hero-gradient);
-    border: 1px solid var(--app-border);
   }
 
-  .mobile-hero-label {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--app-text-tertiary);
-    font-family: 'DM Sans', sans-serif;
-  }
-
-  .mobile-hero-amount {
-    font-size: 1.75rem;
-    font-weight: 400;
-    letter-spacing: -0.02em;
-    color: var(--app-positive);
-    font-family: 'DM Mono', monospace;
-    line-height: 1.1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobile-hero-amount--negative {
-    color: var(--app-negative);
-  }
-
-  /* Hide Monthly Net from strip on mobile (shown in hero) */
-  .dash-summary-item-desktop {
-    display: none;
-  }
-
-  .dash-summary-sep-desktop {
-    display: none;
-  }
-
-  /* 2-column grid for the 3 remaining items */
-  .dash-summary-items {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-
-  .dash-summary-sep {
-    display: none;
-  }
-
-  .dash-summary-item {
-    padding: 0;
-    min-width: 0;
+  .cockpit-side > :last-child {
     flex: none;
-  }
-
-  /* Last item (Ending Balance) spans full width */
-  .dash-summary-items > :last-child {
-    grid-column: 1 / -1;
-  }
-
-  .dash-summary-value {
-    font-size: 1rem;
-  }
-
-  /* Stack chart and right column */
-  .dash-main-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* Header actions become smaller / wrap */
-  .dash-header-actions {
-    flex-wrap: wrap;
   }
 }
 </style>

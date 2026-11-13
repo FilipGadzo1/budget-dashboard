@@ -1,5 +1,5 @@
 import type { MonthAdjustment, SavingsGoal } from '@/models'
-import { monthKeyToDate } from '@/utils/date'
+import { addMonthsToKey, monthKeyToDate } from '@/utils/date'
 
 // Savings are a TRANSFER, not an expense: a contribution moves money from the cash
 // balance into savings, and net worth (cash + savings) is unchanged by it.
@@ -61,4 +61,36 @@ export function buildSavingsContributionAdjustments(
     }
   }
   return result
+}
+
+/**
+ * Every goal's balance at the end of each projected month, keyed by goal id.
+ * Follows the same rules as `buildSavingsContributionAdjustments` (a goal
+ * contributes while it is active, its target date has not passed and it is short
+ * of its target); goals that are not contributing stay at what they hold today.
+ * Amounts are in whatever currency the goals passed in are in.
+ */
+export function buildGoalBalances(
+  goals: SavingsGoal[],
+  startMonth: string,
+  months: number,
+): Record<string, number[]> {
+  const saved = new Map(goals.map((g) => [g.id, g.currentAmount]))
+  const balances: Record<string, number[]> = Object.fromEntries(goals.map((g) => [g.id, [] as number[]]))
+
+  for (let i = 0; i < months; i++) {
+    const mk = addMonthsToKey(startMonth, i)
+    goals.forEach((g) => {
+      let soFar = saved.get(g.id) ?? 0
+      const contributing = g.status === 'active'
+        && g.monthlyContribution > 0
+        && !(g.targetDate && g.targetDate.slice(0, 7) < mk)
+      if (contributing) {
+        soFar += Math.min(g.monthlyContribution, Math.max(0, g.targetAmount - soFar))
+        saved.set(g.id, soFar)
+      }
+      balances[g.id].push(soFar)
+    })
+  }
+  return balances
 }

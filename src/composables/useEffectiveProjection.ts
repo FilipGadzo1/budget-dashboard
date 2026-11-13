@@ -1,7 +1,8 @@
 import { computed } from 'vue'
 
 import { useCurrency } from '@/composables/useCurrency'
-import type { ProjectionInputs } from '@/models'
+import { useTimeTravel } from '@/composables/useTimeTravel'
+import type { ProjectionInputs, SavingsGoal } from '@/models'
 import { monthlyTotals, toDisplayGoal, toDisplayInputs } from '@/services/currencyService'
 import { expensesByCategory } from '@/services/itemsService'
 import {
@@ -9,20 +10,25 @@ import {
   buildProjectionRows,
   buildProjectionSummary,
 } from '@/services/projectionService'
-import { buildSavingsContributionAdjustments, savingsStartingBalance } from '@/services/savingsProjectionService'
+import {
+  buildGoalBalances,
+  buildSavingsContributionAdjustments,
+  savingsStartingBalance,
+} from '@/services/savingsProjectionService'
 import { useProjectionStore } from '@/stores/projection'
 import { useSavingsStore } from '@/stores/savings'
 
 /**
  * The projection every page should show: stored inputs converted to the display
  * currency, plus the savings picture — what is already saved and the planned
- * monthly transfers into savings.
- * Dashboard and Projections both read from here so their numbers always agree.
+ * monthly transfers into savings — and the month being looked at.
+ * Every page reads from here so their numbers always agree.
  */
 export const useEffectiveProjection = () => {
   const projectionStore = useProjectionStore()
   const savingsStore = useSavingsStore()
   const { currencyCode, locale, selectedMonth, convert, canShow } = useCurrency()
+  const { focusIndex } = useTimeTravel()
 
   // Stored inputs with every amount converted to the display currency.
   const displayInputs = computed(() => toDisplayInputs(projectionStore.inputs, currencyCode.value, convert))
@@ -72,6 +78,7 @@ export const useEffectiveProjection = () => {
     return {
       totals: monthlyTotals(display, selectedMonth.value),
       months: display.months,
+      rows: planRows,
       summary: buildProjectionSummary(planRows),
       milestones: buildProjectionMilestones(planRows),
     }
@@ -86,6 +93,22 @@ export const useEffectiveProjection = () => {
   // True when savings play any part in this projection (drives the extra
   // savings / net-worth figures, which would be noise for a budget without goals).
   const hasSavings = computed(() => rows.value.some((r) => r.savingsBalance !== 0))
+
+  // ── The month being looked at ─────────────────────────────────────────────
+  // No month picked means the end of the plan.
+  const hasFocus = computed(() => focusIndex.value !== null && rows.value.length > 0)
+  const focusIdx = computed(() =>
+    rows.value.length ? Math.min(focusIndex.value ?? rows.value.length - 1, rows.value.length - 1) : -1,
+  )
+  const focusRow = computed(() => rows.value[focusIdx.value] ?? null)
+
+  // Every goal's balance at the end of each month, in the goal's own currency.
+  const goalBalances = computed(() =>
+    buildGoalBalances(savingsStore.goals, selectedMonth.value, projectionStore.inputs.months),
+  )
+  /** What a goal holds in the month being looked at (today's amount when none is picked). */
+  const goalAmountAt = (goal: SavingsGoal): number =>
+    hasFocus.value ? goalBalances.value[goal.id]?.[focusIdx.value] ?? goal.currentAmount : goal.currentAmount
 
   // Currencies used somewhere in this budget that cannot be converted right now
   // (exchange rates not loaded). Their amounts are being shown unconverted.
@@ -113,6 +136,11 @@ export const useEffectiveProjection = () => {
     summary,
     milestones,
     hasSavings,
+    hasFocus,
+    focusIdx,
+    focusRow,
+    goalBalances,
+    goalAmountAt,
     unconvertibleCurrencies,
   }
 }

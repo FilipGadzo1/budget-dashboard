@@ -3,10 +3,11 @@ import { useRouter } from 'vue-router'
 
 import { useAuth } from '@/composables/useAuth'
 import type { ThemeMode } from '@/models'
+import { useCollaborationStore } from '@/stores/collaboration'
 import { useUiStore } from '@/stores/ui'
 
-// The contents of the account menu: who is signed in, the theme switch, Settings
-// and Sign out. Used by the sidebar (opens upward from the footer) and by the
+// The contents of the account menu: who is signed in, the theme switch, Sharing,
+// Settings and Sign out. Used by the sidebar (opens upward from the footer) and by the
 // mobile top bar (opens downward from the avatar), so both stay identical.
 
 const emit = defineEmits<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const uiStore = useUiStore()
+const collabStore = useCollaborationStore()
 const { user, signOut } = useAuth()
 
 const themes: Array<{ value: ThemeMode; label: string; icon: string }> = [
@@ -24,9 +26,9 @@ const themes: Array<{ value: ThemeMode; label: string; icon: string }> = [
   { value: 'system', label: 'System', icon: 'pi pi-desktop' },
 ]
 
-const goToSettings = (): void => {
+const goTo = (path: string): void => {
   emit('close')
-  void router.push('/settings')
+  void router.push(path)
 }
 
 const handleSignOut = async (): Promise<void> => {
@@ -60,7 +62,19 @@ const handleSignOut = async (): Promise<void> => {
       </div>
     </div>
 
-    <button class="account-menu-item" role="menuitem" @click="goToSettings">
+    <button class="account-menu-item" role="menuitem" @click="goTo('/collaboration')">
+      <i class="pi pi-users" aria-hidden="true" />
+      Sharing
+      <span
+        v-if="collabStore.pendingInvitesCount > 0"
+        class="account-menu-badge"
+        :aria-label="`${collabStore.pendingInvitesCount} pending invites`"
+      >
+        {{ collabStore.pendingInvitesCount }}
+      </span>
+    </button>
+
+    <button class="account-menu-item" role="menuitem" @click="goTo('/settings')">
       <i class="pi pi-cog" aria-hidden="true" />
       Settings
     </button>
@@ -113,8 +127,6 @@ const handleSignOut = async (): Promise<void> => {
   margin: 0 0 0.375rem;
   font-size: 0.65625rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--app-text-secondary);
 }
 
@@ -200,5 +212,20 @@ const handleSignOut = async (): Promise<void> => {
   height: 1px;
   margin: 0.375rem 0;
   background: var(--app-border);
+}
+
+.account-menu-badge {
+  margin-left: auto;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  background: var(--app-negative);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
 }
 </style>

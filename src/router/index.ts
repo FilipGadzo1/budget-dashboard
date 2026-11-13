@@ -21,7 +21,10 @@ const routes: RouteRecordRaw[] = [
     component: AppShell,
     children: [
       { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
-      { path: 'projections', name: 'projections', component: () => import('@/views/ProjectionsView.vue') },
+      { path: 'plan', name: 'plan', component: () => import('@/views/PlanView.vue') },
+      { path: 'forecast', name: 'forecast', component: () => import('@/views/ForecastView.vue') },
+      // Projections was split into Plan (the inputs) and Forecast (the table)
+      { path: 'projections', redirect: '/plan' },
       { path: 'scenarios', name: 'scenarios', component: () => import('@/views/ScenariosView.vue') },
       { path: 'savings', name: 'savings', component: () => import('@/views/SavingsView.vue') },
       { path: 'collaboration', name: 'collaboration', component: () => import('@/views/CollaborationView.vue') },

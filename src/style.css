@@ -1,6 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,88 +6,130 @@
 
 :root {
   color-scheme: light;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
 
-  --app-bg: #fafafa;
+  /* One family for the whole app (self-hosted, see main.ts). Figures are
+     tabular everywhere so amounts line up in columns and do not jitter when
+     they change. */
+  --font-sans: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-num: var(--font-sans);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+
+  /* ── Aurora glass ──────────────────────────────────────────────────
+     The page is a soft colour glow (--app-backdrop, on <body>) and cards are
+     translucent glass over it (--card-*). --app-bg is the flat colour under
+     the glow; --app-surface is SOLID and is for anything that must not be
+     see-through: dialogs, menus, inputs, tooltips, sticky table headers. */
+  --hue: 148;
+  --app-bg: #edf1ef;
+  --app-backdrop:
+    radial-gradient(1100px 640px at 86% -12%, hsl(var(--hue) 85% 72% / 0.5), transparent 62%),
+    radial-gradient(900px 580px at -8% 112%, hsl(calc(var(--hue) + 75) 85% 78% / 0.42), transparent 62%),
+    #edf1ef;
   --app-surface: #ffffff;
-  --app-surface-hover: #f4f4f5;
-  --app-border: #e4e4e7;
-  --app-border-strong: #d4d4d8;
-  --app-text: #18181b;
-  --app-text-secondary: #71717a;
-  --app-text-tertiary: #a1a1aa;
+  --app-surface-hover: rgba(14, 21, 19, 0.055);
+  --app-border: rgba(14, 21, 19, 0.1);
+  --app-border-strong: rgba(14, 21, 19, 0.2);
+  --app-text: #0e1513;
+  --app-text-secondary: #4f5a55;
+  --app-text-tertiary: #84908a;
 
-  --app-accent: #059669;
-  --app-accent-hover: #047857;
-  --app-accent-soft: rgba(5, 150, 105, 0.08);
+  --card-bg: rgba(255, 255, 255, 0.62);
+  --card-border: rgba(255, 255, 255, 0.75);
+  --card-blur: blur(22px) saturate(1.3);
+
+  /* The accent is kept for money and the chart */
+  --app-accent: hsl(var(--hue) 78% 27%);
+  --app-accent-hover: hsl(var(--hue) 80% 21%);
+  --app-accent-soft: hsl(var(--hue) 78% 27% / 0.1);
+  --app-accent-border: hsl(var(--hue) 78% 27% / 0.24);
   --app-accent-text: #ffffff;
 
-  --app-positive: #059669;
-  --app-positive-soft: rgba(5, 150, 105, 0.08);
-  --app-positive-border: rgba(5, 150, 105, 0.20);
-  --app-negative: #dc2626;
-  --app-negative-soft: rgba(220, 38, 38, 0.06);
-  --app-negative-border: rgba(220, 38, 38, 0.20);
-  --app-warning: #d97706;
-  --app-warning-soft: rgba(217, 119, 6, 0.06);
-  --app-warning-border: rgba(217, 119, 6, 0.20);
+  /* Ink: the colour of primary actions and the active nav item. The interface
+     itself is neutral. */
+  --app-ink: #0e1513;
+  --app-ink-hover: #26302b;
+  --app-ink-text: #ffffff;
 
-  /* Chart series colours — a validated two-colour categorical pair (checked for
-     colour-blind separation and contrast against --app-surface in each theme).
-     Series 1 = cash / income, series 2 = net worth / expenses. */
-  --chart-1: #059669;
-  --chart-2: #2563eb;
-  --chart-grid: #e4e4e7;
+  --app-positive: hsl(var(--hue) 78% 27%);
+  --app-positive-soft: hsl(var(--hue) 78% 27% / 0.1);
+  --app-positive-border: hsl(var(--hue) 78% 27% / 0.24);
+  --app-negative: #c92a2a;
+  --app-negative-soft: rgba(201, 42, 42, 0.08);
+  --app-negative-border: rgba(201, 42, 42, 0.22);
+  --app-warning: #b35c00;
+  --app-warning-soft: rgba(179, 92, 0, 0.09);
+  --app-warning-border: rgba(179, 92, 0, 0.22);
 
-  --mobile-hero-gradient: linear-gradient(135deg, var(--app-accent-soft) 0%, transparent 70%);
-  --mobile-nav-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  /* Chart series: 1 = cash / income (the accent), 2 = savings / net worth
+     (blue, always also dashed where the two share a chart). */
+  --chart-1: var(--app-accent);
+  --chart-2: #2f6fe6;
+  --chart-grid: var(--app-border);
 
-  --sidebar-bg: #f4f4f5;
-  --sidebar-text: #52525b;
-  --sidebar-text-muted: #a1a1aa;
-  --sidebar-text-strong: #18181b;
-  --sidebar-hover: rgba(0, 0, 0, 0.05);
-  --sidebar-active: rgba(0, 0, 0, 0.08);
-  --sidebar-accent: #059669;
-  --sidebar-border: rgba(0, 0, 0, 0.07);
+  --shadow-card: 0 1px 2px rgba(20, 40, 30, 0.05), 0 14px 34px -20px rgba(20, 40, 30, 0.28);
+  --shadow-raised: 0 2px 4px rgba(20, 40, 30, 0.06), 0 20px 40px -18px rgba(20, 40, 30, 0.34);
+  --shadow-pop: 0 16px 40px -12px rgba(18, 26, 22, 0.28), 0 2px 8px rgba(18, 26, 22, 0.08);
+
+  /* Radius by role: page-level cards, inner panels, controls */
+  --radius-card: 18px;
+  --radius-panel: 12px;
+  --radius-control: 10px;
+
+  /* Airy density: the space between cards and inside them */
+  --gap: 1.25rem;
+  --card-pad: 1.5rem;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --mobile-nav-shadow: var(--shadow-pop);
 }
 
 html.app-dark {
   color-scheme: dark;
 
-  --app-bg: #09090b;
-  --app-surface: #18181b;
-  --app-surface-hover: #27272a;
-  --app-border: #27272a;
-  --app-border-strong: #3f3f46;
-  --app-text: #fafafa;
-  --app-text-secondary: #a1a1aa;
-  --app-text-tertiary: #71717a;
+  --app-bg: #06080a;
+  --app-backdrop:
+    radial-gradient(1100px 640px at 86% -12%, hsl(var(--hue) 80% 32% / 0.36), transparent 62%),
+    radial-gradient(900px 580px at -8% 112%, hsl(calc(var(--hue) + 75) 80% 38% / 0.26), transparent 62%),
+    #06080a;
+  --app-surface: #12171a;
+  --app-surface-hover: rgba(255, 255, 255, 0.075);
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-border-strong: rgba(255, 255, 255, 0.22);
+  --app-text: #f2f5f4;
+  --app-text-secondary: #a7b0ac;
+  --app-text-tertiary: #6e7873;
 
-  --app-accent: #34d399;
-  --app-accent-hover: #6ee7b7;
-  --app-accent-soft: rgba(52, 211, 153, 0.10);
-  --app-accent-text: #09090b;
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-border: rgba(255, 255, 255, 0.1);
 
-  --app-positive: #34d399;
-  --app-positive-soft: rgba(52, 211, 153, 0.10);
-  --app-negative: #f87171;
-  --app-negative-soft: rgba(248, 113, 113, 0.10);
-  --app-warning: #fbbf24;
-  --app-warning-soft: rgba(251, 191, 36, 0.08);
+  --app-accent: hsl(var(--hue) 82% 62%);
+  --app-accent-hover: hsl(var(--hue) 85% 72%);
+  --app-accent-soft: hsl(var(--hue) 82% 62% / 0.13);
+  --app-accent-border: hsl(var(--hue) 82% 62% / 0.3);
+  --app-accent-text: #04110b;
 
-  --chart-1: #0ea875;
-  --chart-2: #3b82f6;
-  --chart-grid: #27272a;
+  --app-ink: #f2f5f4;
+  --app-ink-hover: #ffffff;
+  --app-ink-text: #06080a;
 
-  --sidebar-bg: #09090b;
-  --sidebar-text: #d4d4d8;
-  --sidebar-text-muted: #71717a;
-  --sidebar-text-strong: #fafafa;
-  --sidebar-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-active: rgba(255, 255, 255, 0.08);
-  --sidebar-accent: #34d399;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --app-positive: hsl(var(--hue) 82% 62%);
+  --app-positive-soft: hsl(var(--hue) 82% 62% / 0.13);
+  --app-positive-border: hsl(var(--hue) 82% 62% / 0.3);
+  --app-negative: #ff7b72;
+  --app-negative-soft: rgba(255, 123, 114, 0.13);
+  --app-negative-border: rgba(255, 123, 114, 0.3);
+  --app-warning: #f5b84a;
+  --app-warning-soft: rgba(245, 184, 74, 0.12);
+  --app-warning-border: rgba(245, 184, 74, 0.3);
+
+  --chart-2: #79a8ff;
+
+  /* On a dark page, depth comes from the glass edge; shadows only lift popovers */
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --shadow-pop: 0 18px 44px -12px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 /* ── Base ─────────────────────────────────────────────────────────── */
@@ -100,9 +139,15 @@ html {
   background: var(--app-bg);
   color: var(--app-text);
   overflow-x: hidden;
-  /* Always reserve the scrollbar's space so the layout never shifts sideways
-     when a modal locks scrolling or a page grows past the viewport. */
-  scrollbar-gutter: stable;
+}
+
+/* Where the page itself scrolls (below the desktop layout), reserve the
+   scrollbar's space so the layout never shifts sideways when a modal locks
+   scrolling. On a desktop the frame is one screen tall and nothing scrolls. */
+@media (max-width: 1023px) {
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 /* Opening a modal makes PrimeVue add .p-overflow-hidden to <body> with
@@ -123,7 +168,8 @@ body {
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
-  background: var(--app-bg);
+  background: var(--app-backdrop);
+  background-attachment: fixed;
   color: var(--app-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -165,106 +211,26 @@ button, input, select, textarea {
   font: inherit;
 }
 
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* A page fades in when you navigate to it. Opacity only: a transform here
+   would become the containing block for sticky and fixed children. */
+@keyframes pageIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* ── Sidebar ──────────────────────────────────────────────────────── */
-
-.sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 260px;
-  height: 100dvh;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
-  display: flex;
-  flex-direction: column;
-  z-index: 60;
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+.page-enter {
+  animation: pageIn 0.2s ease-out;
 }
 
-.sidebar-brand {
-  padding: 1.5rem 1.25rem 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+/* Progress and share bars fill from the left when they first appear */
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
 }
 
-.sidebar-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--sidebar-text-strong);
-  letter-spacing: -0.01em;
-}
-
-.sidebar-subtitle {
-  font-size: 0.6875rem;
-  color: var(--sidebar-text-muted);
-  margin-top: 1px;
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.sidebar-link {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--sidebar-text);
-  text-decoration: none;
-  transition: all 0.15s ease;
-  cursor: pointer;
-}
-
-.sidebar-link:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text-strong);
-}
-
-.sidebar-link-active {
-  background: var(--sidebar-active);
-  color: var(--sidebar-text-strong);
-}
-
-.sidebar-link-active .sidebar-link-icon {
-  color: var(--sidebar-accent);
-}
-
-.sidebar-link-icon {
-  font-size: 1.125rem;
-  width: 1.25rem;
-  text-align: center;
-  color: var(--sidebar-text-muted);
-  transition: color 0.15s ease;
-}
-
-.sidebar-divider {
-  height: 1px;
-  background: var(--sidebar-border);
-  margin: 0.5rem 0.75rem;
-}
-
-.sidebar-footer {
-  padding: 0.75rem;
-  border-top: 1px solid var(--sidebar-border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  flex-shrink: 0;
+.bar-grow {
+  transform-origin: left center;
+  animation: barGrow 0.7s var(--ease-out) both;
 }
 
 /* ── Mobile top bar ───────────────────────────────────────────────── */
@@ -276,12 +242,14 @@ button, input, select, textarea {
   left: 0;
   right: 0;
   height: 60px;
-  background: var(--app-surface);
+  background: color-mix(in srgb, var(--app-surface) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
   align-items: center;
   justify-content: space-between;
   padding: 0 1rem;
   z-index: 50;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   /* gradient bottom border */
   border-bottom: 1px solid transparent;
   box-shadow: inset 0 -1px 0 var(--app-border);
@@ -297,7 +265,7 @@ button, input, select, textarea {
   font-size: 1rem;
   font-weight: 600;
   color: var(--app-text);
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .mobile-topbar-actions {
@@ -314,7 +282,7 @@ button, input, select, textarea {
   bottom: 1.25rem;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--app-surface);
+  background: color-mix(in srgb, var(--app-surface) 86%, transparent);
   border: 1px solid var(--app-border);
   border-radius: 100px;
   box-shadow: var(--mobile-nav-shadow);
@@ -359,8 +327,8 @@ button, input, select, textarea {
 }
 
 .mobile-tab-active {
-  background: var(--app-accent) !important;
-  color: var(--app-accent-text) !important;
+  background: var(--app-ink) !important;
+  color: var(--app-ink-text) !important;
 }
 
 .mobile-tab-icon {
@@ -377,10 +345,23 @@ button, input, select, textarea {
 /* ── Responsive ───────────────────────────────────────────────────── */
 
 @media (max-width: 1023px) {
-  .sidebar {
-    transform: translateX(-100%);
-  }
   .mobile-topbar { display: flex; }
+
+  /* The top bar already names the page, so the in-page title is kept for
+     screen readers only instead of being shown twice. */
+  .page-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .page-description {
+    margin-top: 0;
+  }
   .mobile-tabs { display: block; }
 
   .main-content {
@@ -391,19 +372,10 @@ button, input, select, textarea {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
     padding-top: calc(60px + 1rem) !important;
+    /* room for the tab bar */
     padding-bottom: 6.5rem !important;
   }
 
-  .page-container {
-    animation: fadeUp 0.22s ease both;
-  }
-
-  .tabular-nums,
-  .kpi-value,
-  .text-metric {
-    font-family: 'DM Mono', monospace;
-    font-weight: 400;
-  }
 }
 
 @media (max-width: 639px) {
@@ -417,11 +389,168 @@ button, input, select, textarea {
 
 /* ── Main content ─────────────────────────────────────────────────── */
 
+/* Desktop: the shell is exactly one screen tall — top bar, then the page — and
+   the page lays itself out inside it (see "Page layout"). If a page cannot fit
+   (a very short window), this area scrolls as a fallback. */
+.app-frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+}
+
 .main-content {
-  margin-left: 260px;
-  min-height: 100dvh;
-  padding: 2rem;
+  min-height: 0;
+  min-width: 0;
+  padding: 1.5rem 2rem;
   box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.page-enter {
+  height: 100%;
+}
+
+/* A short window (a 768px laptop): tighten everything so pages still fit */
+@media (min-width: 1024px) and (max-height: 800px) {
+  :root {
+    --gap: 0.75rem;
+    --card-pad: 1rem;
+  }
+
+  .main-content {
+    padding: 0.875rem 1.25rem;
+  }
+
+  .page-title {
+    font-size: 1.5rem !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-frame {
+    display: block;
+    height: auto;
+  }
+
+  .main-content {
+    overflow: visible;
+  }
+
+  .page-enter {
+    height: auto;
+  }
+}
+
+/* ── Page layout ──────────────────────────────────────────────────── */
+
+/* Every page is a full-height column: a header, then a body grid that takes the
+   rest. Nothing in it is taller than the screen; anything long scrolls inside
+   its own card (.scroll-y). On phones the page stacks and scrolls normally. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: none;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.page-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: var(--gap);
+}
+
+.page-body.with-rail {
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+}
+
+.page-body.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.page-body.cols-2 {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  min-height: 0;
+}
+
+.grow {
+  flex: 1;
+  min-height: 0;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* A card laid out as a column, so one part of it can grow or scroll */
+.card-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex: none;
+}
+
+@media (max-width: 1023px) {
+  .page {
+    height: auto;
+  }
+
+  .page-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .page-body,
+  .page-body.with-rail,
+  .page-body.cols-3,
+  .page-body.cols-2 {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .grow {
+    flex: none;
+  }
+
+  .scroll-y {
+    overflow: visible;
+  }
+
+  /* Charts have no page height to fill on a phone, so they get one */
+  .card.chart-box {
+    min-height: 18rem;
+  }
 }
 
 .page-header {
@@ -429,9 +558,10 @@ button, input, select, textarea {
 }
 
 .page-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-size: 2rem;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
   color: var(--app-text);
 }
 
@@ -445,21 +575,95 @@ button, input, select, textarea {
 /* ── Card ─────────────────────────────────────────────────────────── */
 
 .card {
-  background: var(--app-surface);
-  border: 1px solid var(--app-border);
-  border-radius: 12px;
-  padding: 1.5rem;
+  /* Glass: translucent over the page glow, with a light edge */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+  padding: var(--card-pad);
+  min-width: 0;
+  min-height: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .card-hover:hover {
-  border-color: var(--app-border-strong);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-raised);
 }
 
 .card-sm { padding: 1rem; }
 .card-lg { padding: 2rem; }
 .card-flush { padding: 0; }
+
+/* ── Icon tile ────────────────────────────────────────────────────── */
+
+/* A small coloured square that gives a row its identity (an expense category,
+   an income source, a next step). The hue comes from --h; the name next to it
+   always carries the meaning, the colour only helps find it again. */
+.tile {
+  --h: 158;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  background: hsl(var(--h) 75% 93%);
+  color: hsl(var(--h) 70% 30%);
+}
+
+.tile-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5625rem;
+  font-size: 0.75rem;
+}
+
+.tile-neutral {
+  background: var(--app-surface-hover);
+  color: var(--app-text-secondary);
+}
+
+html.app-dark .tile:not(.tile-neutral) {
+  background: hsl(var(--h) 60% 62% / 0.16);
+  color: hsl(var(--h) 75% 74%);
+}
+
+/* ── Page with a side rail ────────────────────────────────────────── */
+
+/* Main content beside a narrower rail of supporting cards; the rail drops
+   under the main column on small screens. */
+.page-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+  gap: 1rem;
+  align-items: start;
+}
+
+.page-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+@media (max-width: 1099px) {
+  .page-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A small heading inside a card */
+.card-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--app-text);
+}
 
 /* ── Typography ───────────────────────────────────────────────────── */
 
@@ -479,11 +683,9 @@ button, input, select, textarea {
 }
 
 .text-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--app-text-tertiary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--app-text-secondary);
 }
 
 .text-body {
@@ -564,31 +766,37 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
+  padding: 0.5625rem 1.125rem;
+  border-radius: 999px;
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   border: 1px solid transparent;
   white-space: nowrap;
 }
 
+/* Pressing a button gives a little under the finger */
+.btn:active {
+  transform: scale(0.97);
+}
+
 .btn-primary {
-  background: var(--app-accent);
-  color: var(--app-accent-text);
-  border-color: var(--app-accent);
+  background: var(--app-ink);
+  color: var(--app-ink-text);
+  border-color: var(--app-ink);
 }
 
 .btn-primary:hover {
-  background: var(--app-accent-hover);
-  border-color: var(--app-accent-hover);
+  background: var(--app-ink-hover);
+  border-color: var(--app-ink-hover);
 }
 
 .btn-secondary {
   background: var(--app-surface);
   color: var(--app-text);
   border-color: var(--app-border-strong);
+  box-shadow: 0 1px 2px rgba(18, 26, 22, 0.04);
 }
 
 .btn-secondary:hover {
@@ -618,9 +826,9 @@ button, input, select, textarea {
 }
 
 .btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  border-radius: 6px;
+  padding: 0.4375rem 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 999px;
 }
 
 .btn:disabled,
@@ -634,7 +842,7 @@ button, input, select, textarea {
   width: 36px;
   height: 36px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 50%;
 }
 
 /* ── Form controls ────────────────────────────────────────────────── */
@@ -651,7 +859,7 @@ button, input, select, textarea {
 .form-select {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--app-border-strong);
   background: var(--app-surface);
   color: var(--app-text);
@@ -679,9 +887,9 @@ button, input, select, textarea {
 .p-select,
 .p-textarea {
   width: 100% !important;
-  border-radius: 8px !important;
+  border-radius: var(--radius-control) !important;
   font-size: 0.875rem !important;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   border-color: var(--app-border-strong) !important;
   background: var(--app-surface) !important;
   color: var(--app-text) !important;
@@ -706,7 +914,7 @@ button, input, select, textarea {
 }
 
 .p-button {
-  border-radius: 8px !important;
+  border-radius: 999px !important;
   font-weight: 600 !important;
   font-size: 0.8125rem !important;
   min-height: 2.5rem;
@@ -715,8 +923,8 @@ button, input, select, textarea {
 
 .p-button:not(.p-button-text):not(.p-button-outlined) {
   border: none !important;
-  background: var(--app-accent) !important;
-  color: var(--app-accent-text) !important;
+  background: var(--app-ink) !important;
+  color: var(--app-ink-text) !important;
 }
 
 .p-button.p-button-outlined {
@@ -729,7 +937,8 @@ button, input, select, textarea {
 .p-datepicker-panel,
 .p-select-overlay,
 .p-toast-message {
-  border-radius: 12px !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: var(--shadow-pop) !important;
   border-color: var(--app-border) !important;
   background: var(--app-surface) !important;
   color: var(--app-text) !important;
@@ -739,6 +948,34 @@ button, input, select, textarea {
 .p-dialog .p-dialog-content,
 .p-dialog .p-dialog-footer {
   background: transparent !important;
+}
+
+/* The close button is a quiet round icon button, not an outlined circle */
+.p-dialog .p-dialog-close-button {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  min-height: 0;
+  border: none !important;
+  outline: none;
+  background: transparent !important;
+  color: var(--app-text-secondary) !important;
+}
+
+.p-dialog .p-dialog-close-button:hover {
+  background: var(--app-surface-hover) !important;
+  color: var(--app-text) !important;
+}
+
+.p-dialog .p-dialog-close-button:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+.p-dialog {
+  border: none !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: var(--shadow-pop) !important;
 }
 
 /* Tall dialogs scroll inside themselves instead of running off the screen.
@@ -777,8 +1014,6 @@ button, input, select, textarea {
   text-align: left;
   font-size: 0.6875rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--app-text-tertiary);
   border-bottom: 1px solid var(--app-border);
 }
@@ -802,25 +1037,17 @@ button, input, select, textarea {
 .scenario-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--app-border);
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: var(--radius-card);
+  border: 1px solid transparent;
   background: var(--app-surface);
+  box-shadow: var(--shadow-card);
   transition: all 0.15s ease;
 }
 
-@media (min-width: 640px) {
-  .scenario-card {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-}
-
 .scenario-card:hover {
-  border-color: var(--app-border-strong);
+  box-shadow: var(--shadow-raised);
 }
 
 .scenario-card-active {
@@ -832,9 +1059,9 @@ button, input, select, textarea {
 
 .kpi-card {
   padding: 1.25rem;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
 }
 
 .kpi-value {
@@ -848,8 +1075,8 @@ button, input, select, textarea {
 /* ── Insight card ─────────────────────────────────────────────────── */
 
 .insight-card {
-  padding: 1.25rem;
-  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--app-border);
 }
 

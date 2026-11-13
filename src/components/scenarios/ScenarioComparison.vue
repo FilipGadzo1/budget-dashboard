@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import MoneyFlow from '@/components/shared/MoneyFlow.vue'
+
 export interface ComparisonRow {
   id: string
   name: string
@@ -15,7 +17,6 @@ export interface ComparisonRow {
 
 const props = defineProps<{
   rows: ComparisonRow[]
-  formatCurrency: (n: number) => string
 }>()
 
 // Ending cash is only comparable between plans of the same length, so the "best"
@@ -31,7 +32,7 @@ const bestId = computed(() => {
 <template>
   <div class="card card-flush compare-card">
     <div class="compare-header">
-      <p class="text-label">Compare plans</p>
+      <h2 class="card-title">Compare plans</h2>
       <p class="compare-hint">
         Each plan projected from your current starting balance and savings.
       </p>
@@ -56,17 +57,17 @@ const bestId = computed(() => {
               <span class="compare-name">{{ row.name }}</span>
               <span v-if="row.isActive" class="status-pill status-pill-positive compare-pill">Active</span>
             </td>
-            <td class="compare-td compare-num">{{ formatCurrency(row.income) }}</td>
-            <td class="compare-td compare-num">{{ formatCurrency(row.expenses) }}</td>
+            <td class="compare-td compare-num"><MoneyFlow :value="row.income" /></td>
+            <td class="compare-td compare-num"><MoneyFlow :value="row.expenses" /></td>
             <td
               class="compare-td compare-num"
               :class="row.income - row.expenses >= 0 ? 'text-positive' : 'text-negative'"
             >
-              {{ row.income - row.expenses >= 0 ? '+' : '' }}{{ formatCurrency(row.income - row.expenses) }}
+              <MoneyFlow :value="row.income - row.expenses" signed />
             </td>
             <td class="compare-td compare-num">{{ row.months }} mo</td>
             <td class="compare-td compare-num" :class="{ 'text-negative': row.endingBalance < 0 }">
-              {{ formatCurrency(row.endingBalance) }}
+              <MoneyFlow :value="row.endingBalance" />
               <span v-if="row.id === bestId" class="compare-best" title="Highest ending cash">
                 <i class="pi pi-star-fill" /> Best
               </span>
@@ -115,8 +116,6 @@ const bestId = computed(() => {
   padding: 0.5rem 1rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--app-text-secondary);
   text-align: right;
   white-space: nowrap;
@@ -158,13 +157,13 @@ tbody tr:last-child .compare-td {
 
 .compare-num {
   text-align: right;
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
 }
 
 .compare-best {
   margin-left: 0.5rem;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--app-accent);

@@ -69,15 +69,17 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Collaboration</h1>
-      <p class="page-description">Share your budget with partners and family.</p>
-    </div>
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">Sharing</h1>
+        <p class="page-description">Share your budget with partners and family.</p>
+      </div>
+    </header>
 
-    <div class="collab-layout">
+    <div class="collab-layout page-body">
       <!-- Left column -->
-      <div class="collab-main">
+      <div class="collab-main scroll-y">
 
         <!-- People with access to my budget -->
         <section class="card mb-6">
@@ -172,7 +174,7 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
 
       <!-- Right column: Activity feed -->
       <aside class="collab-sidebar">
-        <div class="card">
+        <div class="card collab-activity">
           <div class="flex items-center justify-between mb-4">
             <h2 class="collab-section-title mb-0">Recent activity</h2>
             <button
@@ -183,7 +185,13 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
               <i class="pi pi-refresh text-xs" />
             </button>
           </div>
+          <!-- The list scrolls inside the card, so a long history never makes
+               the whole page scroll. Focusable so it can be scrolled by keyboard. -->
           <ActivityFeed
+            class="collab-activity-scroll"
+            tabindex="0"
+            role="region"
+            aria-label="Recent activity"
             :entries="collabStore.activityLog"
             :loading="collabStore.isLoading && !collabStore.activityLog.length"
           />
@@ -206,16 +214,9 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
 </template>
 
 <style scoped>
-.collab-layout {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: 1fr;
-}
-
 @media (min-width: 1024px) {
   .collab-layout {
-    grid-template-columns: 1fr 18rem;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
   }
 }
 
@@ -225,6 +226,37 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
 
 .collab-sidebar {
   min-width: 0;
+}
+
+/* The card is never taller than the screen; its list takes what is left and
+   scrolls. On a wide screen it also stays in view while the left side scrolls. */
+.collab-activity {
+  display: flex;
+  flex-direction: column;
+  max-height: 28rem;
+}
+
+.collab-activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the scrollbar without it touching the text */
+  margin-right: -0.5rem;
+  padding-right: 0.5rem;
+  border-radius: var(--radius-control);
+}
+
+/* On a desktop the card is as tall as the page body, whatever the screen */
+@media (min-width: 1024px) {
+  .collab-sidebar {
+    min-height: 0;
+  }
+
+  .collab-activity {
+    height: 100%;
+    max-height: none;
+  }
 }
 
 .collab-section-header {
@@ -297,7 +329,7 @@ const viewBudget = async (budget: SharedBudget): Promise<void> => {
   }
 
   .collab-section-title {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     letter-spacing: 0.01em;
   }

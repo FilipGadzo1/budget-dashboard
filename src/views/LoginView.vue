@@ -76,7 +76,7 @@ const features = [
   align-items: center;
   justify-content: center;
   padding: 2.5rem 2rem;
-  background: var(--sidebar-bg);
+  background: var(--app-surface);
   color: #fafafa;
   border-radius: 16px;
 }
